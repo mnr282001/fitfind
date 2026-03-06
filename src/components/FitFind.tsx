@@ -102,7 +102,7 @@ function buildAffiliateUrl(rawUrl: string, _retailer?: string): string {
       url.searchParams.set("mid", CONFIG.affiliate.rakutenMid);
       return url.toString();
     }
-    return `https://api.shopstylecollective.com/action/click?pid=${CONFIG.affiliate.shopstylePid}&url=${encodeURIComponent(rawUrl)}`;
+    return rawUrl;
   } catch {
     return rawUrl;
   }
