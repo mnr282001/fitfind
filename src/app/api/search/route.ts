@@ -19,9 +19,18 @@ export async function POST(req: Request) {
   );
   const data = await res.json();
 
-  // Extract best product match
+  // Extract best product match — skip affiliate redirect links (e.g. collectivevoice.com)
   const matches = data.visual_matches || data.shopping_results || [];
-  const top = matches[0];
+  const BLOCKED = ["collectivevoice.com", "shopstyle.com", "shareasale.com"];
+  const top = matches.find((m: { link?: string }) => {
+    if (!m.link) return false;
+    try {
+      const host = new URL(m.link).hostname;
+      return !BLOCKED.some((b) => host.includes(b));
+    } catch {
+      return false;
+    }
+  });
 
   if (top) {
     return Response.json({
