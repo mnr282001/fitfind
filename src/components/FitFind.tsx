@@ -632,6 +632,28 @@ export default function FitFind(): JSX.Element {
                                               >
                                                 Shop on {it.product.retailer}
                                               </button>
+                                              <button
+                                                className="shop-btn"
+                                                onClick={() => {
+                                                  const q = encodeURIComponent(it.product!.product_name || it.search_query);
+                                                  window.open(`https://www.google.com/search?q=${q}&tbm=shop`, "_blank");
+                                                }}
+                                                style={{
+                                                  width: "100%",
+                                                  background: "transparent",
+                                                  color: "#888",
+                                                  border: "1px solid rgba(255,255,255,.08)",
+                                                  padding: "10px 16px",
+                                                  borderRadius: 10,
+                                                  fontSize: 12,
+                                                  fontWeight: 500,
+                                                  fontFamily: "inherit",
+                                                  cursor: "pointer",
+                                                  marginTop: 8,
+                                                }}
+                                              >
+                                                Find similar on Google
+                                              </button>
                                             </div>
                                           )}
                                         </div>
