@@ -13,6 +13,11 @@ const PARTNER_TIERS: { names: string[]; tier: number }[] = [
 
 const BLOCKED = ["collectivevoice.com", "shopstyle.com", "shareasale.com"];
 
+// Minimum score to show a specific product. Below this, fall back to "similar items" only.
+// Score breakdown: partner tier ×10, has price +3, has thumbnail +1.
+// A score of 3 means: non-partner with a price. Raise to require partner matches.
+const MIN_SCORE = 3;
+
 interface SerpMatch {
   product_link?: string;
   title?: string;
@@ -76,9 +81,10 @@ export async function POST(req: Request) {
     .filter(({ score }) => score >= 0)
     .sort((a, b) => b.score - a.score);
 
-  const top = scored[0]?.m;
+  const best = scored[0];
 
-  if (top) {
+  if (best && best.score >= MIN_SCORE) {
+    const top = best.m;
     return Response.json({
       product_name: top.title || searchQuery,
       brand: top.source || brandGuess,

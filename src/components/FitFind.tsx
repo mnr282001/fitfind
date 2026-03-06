@@ -611,27 +611,29 @@ export default function FitFind(): JSX.Element {
                                               <div style={{ fontSize: 12, color: "#bbb", marginBottom: 10 }}>
                                                 {it.product.product_name}
                                               </div>
-                                              <button
-                                                className="shop-btn"
-                                                onClick={() => {
-                                                  handleShopClick(it);
-                                                  window.open(buildAffiliateUrl(it.product!.url, it.product!.retailer), "_blank");
-                                                }}
-                                                style={{
-                                                  width: "100%",
-                                                  background: "linear-gradient(135deg, #d1a38b, #b8806a)",
-                                                  color: "#08080a",
-                                                  border: "none",
-                                                  padding: "11px 16px",
-                                                  borderRadius: 10,
-                                                  fontSize: 13,
-                                                  fontWeight: 600,
-                                                  fontFamily: "inherit",
-                                                  cursor: "pointer",
-                                                }}
-                                              >
-                                                Shop on {it.product.retailer}
-                                              </button>
+                                              {it.product.match_confidence !== "low" && (
+                                                <button
+                                                  className="shop-btn"
+                                                  onClick={() => {
+                                                    handleShopClick(it);
+                                                    window.open(buildAffiliateUrl(it.product!.url, it.product!.retailer), "_blank");
+                                                  }}
+                                                  style={{
+                                                    width: "100%",
+                                                    background: "linear-gradient(135deg, #d1a38b, #b8806a)",
+                                                    color: "#08080a",
+                                                    border: "none",
+                                                    padding: "11px 16px",
+                                                    borderRadius: 10,
+                                                    fontSize: 13,
+                                                    fontWeight: 600,
+                                                    fontFamily: "inherit",
+                                                    cursor: "pointer",
+                                                  }}
+                                                >
+                                                  Shop on {it.product.retailer}
+                                                </button>
+                                              )}
                                               <button
                                                 className="shop-btn"
                                                 onClick={() => {
@@ -640,19 +642,19 @@ export default function FitFind(): JSX.Element {
                                                 }}
                                                 style={{
                                                   width: "100%",
-                                                  background: "transparent",
-                                                  color: "#888",
+                                                  background: it.product.match_confidence === "low" ? "rgba(255,255,255,.04)" : "transparent",
+                                                  color: it.product.match_confidence === "low" ? "#ccc" : "#888",
                                                   border: "1px solid rgba(255,255,255,.08)",
                                                   padding: "10px 16px",
                                                   borderRadius: 10,
                                                   fontSize: 12,
-                                                  fontWeight: 500,
+                                                  fontWeight: it.product.match_confidence === "low" ? 600 : 500,
                                                   fontFamily: "inherit",
                                                   cursor: "pointer",
-                                                  marginTop: 8,
+                                                  marginTop: it.product.match_confidence === "low" ? 0 : 8,
                                                 }}
                                               >
-                                                Find similar on Google
+                                                {it.product.match_confidence === "low" ? "Browse similar items" : "Find similar on Google"}
                                               </button>
                                             </div>
                                           )}
