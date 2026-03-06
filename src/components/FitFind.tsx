@@ -134,6 +134,8 @@ interface RateLimitState {
   lastScan: number;
 }
 
+const IS_DEV = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
 const RateLimiter: RateLimiterType = (() => {
   const { scansPerDay: LIMIT, cooldownMs: COOLDOWN, maxFileMb: MAX_MB } = CONFIG.rateLimit;
   const KEY = "fitfind_rl";
@@ -164,6 +166,7 @@ const RateLimiter: RateLimiterType = (() => {
   return {
     LIMIT,
     check(): RateLimitResult {
+      if (IS_DEV) return { ok: true };
       const s = getState();
       if (s.count >= LIMIT) {
         return { ok: false, reason: `Daily limit reached (${LIMIT} free scans). Upgrade to Pro for 50/day.` };
@@ -175,6 +178,7 @@ const RateLimiter: RateLimiterType = (() => {
       return { ok: true };
     },
     consume(): number {
+      if (IS_DEV) return LIMIT;
       const s = getState();
       s.count++;
       s.lastScan = Date.now();
@@ -183,6 +187,7 @@ const RateLimiter: RateLimiterType = (() => {
       return LIMIT - s.count;
     },
     remaining(): number {
+      if (IS_DEV) return LIMIT;
       const s = getState();
       return Math.max(0, LIMIT - s.count);
     },
