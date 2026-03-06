@@ -2,45 +2,46 @@ import { buildAffiliateUrl } from "@/lib/affiliate";
 
 // ─── PARTNER PRIORITY CONFIG ──────────────────────────────────────────────────
 // Set to [] to disable all partnerships (no priority boosting).
-// Tier values: higher = more priority. Only boosts when there's a real match.
-const PARTNER_TIERS: { domains: string[]; tier: number }[] = [
+// Matched against the `source` (retailer name) field, case-insensitive.
+const PARTNER_TIERS: { names: string[]; tier: number }[] = [
   // Tier 1 — highest priority (testing only, no real partnership)
-  { domains: ["zara.com", "uniqlo.com", "hm.com"], tier: 2 },
+  { names: ["zara", "uniqlo", "h&m"], tier: 2 },
   // Tier 2 — secondary priority (testing only, no real partnership)
-  { domains: ["alfani.com", "bananarepublic.com", "bananarepublic.gap.com"], tier: 1 },
+  { names: ["alfani", "banana republic"], tier: 1 },
 ];
 // ─────────────────────────────────────────────────────────────────────────────
 
 const BLOCKED = ["collectivevoice.com", "shopstyle.com", "shareasale.com"];
 
 interface SerpMatch {
-  link?: string;
+  product_link?: string;
   title?: string;
   source?: string;
   price?: string;
   thumbnail?: string;
 }
 
-function getPartnerTier(hostname: string): number {
-  for (const { domains, tier } of PARTNER_TIERS) {
-    if (domains.some((d) => hostname.includes(d))) return tier;
+function getPartnerTier(source: string): number {
+  const s = source.toLowerCase();
+  for (const { names, tier } of PARTNER_TIERS) {
+    if (names.some((n) => s.includes(n))) return tier;
   }
   return 0;
 }
 
 function scoreMatch(m: SerpMatch): number {
-  if (!m.link) return -1;
+  if (!m.product_link) return -1;
   try {
-    const host = new URL(m.link).hostname.toLowerCase();
+    const host = new URL(m.product_link).hostname.toLowerCase();
     if (BLOCKED.some((b) => host.includes(b))) return -1;
-
-    let score = getPartnerTier(host) * 10; // partner boost
-    if (m.price) score += 3;               // has a price = stronger match signal
-    if (m.thumbnail) score += 1;
-    return score;
   } catch {
     return -1;
   }
+
+  let score = getPartnerTier(m.source ?? "") * 10; // partner boost
+  if (m.price) score += 3;                          // has a price = stronger match signal
+  if (m.thumbnail) score += 1;
+  return score;
 }
 
 export async function POST(req: Request) {
@@ -54,23 +55,26 @@ export async function POST(req: Request) {
     gl: "us",
   });
 
-  const res = await fetch(`https://serpapi.com/search.json?${params}`);
-  const data = await res.json();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
 
-  const matches: SerpMatch[] = data.shopping_results || [];
+  let data: Record<string, unknown> = {};
+  try {
+    const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: controller.signal });
+    data = await res.json();
+  } catch (err) {
+    console.error("[FitFind search] fetch failed:", err);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const matches: SerpMatch[] = (data.shopping_results as SerpMatch[]) || [];
 
   // Score all matches and pick the best one
   const scored = matches
     .map((m) => ({ m, score: scoreMatch(m) }))
     .filter(({ score }) => score >= 0)
     .sort((a, b) => b.score - a.score);
-
-  console.log("[FitFind search]", searchQuery, scored.slice(0, 5).map(({ m, score }) => ({
-    source: m.source,
-    score,
-    host: m.link ? (() => { try { return new URL(m.link).hostname; } catch { return m.link; } })() : null,
-    price: m.price,
-  })));
 
   const top = scored[0]?.m;
 
@@ -79,7 +83,7 @@ export async function POST(req: Request) {
       product_name: top.title || searchQuery,
       brand: top.source || brandGuess,
       price: top.price || null,
-      url: buildAffiliateUrl(top.link!),
+      url: buildAffiliateUrl(top.product_link!),
       retailer: top.source || "Unknown",
       thumbnail: top.thumbnail || null,
       match_confidence: top.price ? "high" : "medium",
