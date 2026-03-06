@@ -222,6 +222,7 @@ async function identifyOutfit(base64: string, mediaType: string): Promise<Identi
   body: JSON.stringify({ image: base64, mediaType }),
 });
 const data = await res.json();
+if (!res.ok) throw new Error(data.error ?? "Analyze request failed");
 return data.items;
 }
 

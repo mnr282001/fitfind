@@ -27,11 +27,20 @@ Respond ONLY with valid JSON array. No markdown.`
     }
   );
 
+  if (!res.ok) {
+    const err = await res.text();
+    return Response.json({ error: "Gemini API error", detail: err }, { status: 502 });
+  }
+
   const data = await res.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
-  
+
   // Clean any markdown fences Gemini might add
-  const cleaned = text.replace(/```json|```/g, "").trim();
-  
-  return Response.json({ items: JSON.parse(cleaned) });
+  const cleaned = text.replace(/```json\n?|```/g, "").trim();
+
+  try {
+    return Response.json({ items: JSON.parse(cleaned) });
+  } catch {
+    return Response.json({ error: "Failed to parse model response", raw: cleaned }, { status: 500 });
+  }
 }
