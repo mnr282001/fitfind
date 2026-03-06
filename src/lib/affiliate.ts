@@ -1,6 +1,6 @@
 const AMAZON_TAG = process.env.AMAZON_AFFILIATE_TAG || "fitfind-20";
 
-export function buildAffiliateUrl(rawUrl) {
+export function buildAffiliateUrl(rawUrl: string | URL) {
   if (!rawUrl) return "#";
   try {
     const url = new URL(rawUrl);
