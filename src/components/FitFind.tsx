@@ -22,7 +22,7 @@
 
 "use client";
 
-import { useState, useRef, useCallback, type CSSProperties, JSX } from "react";
+import { useState, useEffect, useRef, useCallback, type CSSProperties, JSX } from "react";
 
 /* ═══════════════════════════════════════════════
    TYPES
@@ -292,9 +292,13 @@ export default function FitFind(): JSX.Element {
   const [dragOver, setDragOver] = useState<boolean>(false);
   const [expandedItem, setExpandedItem] = useState<number | null>(null);
   const [error, setError] = useState<string>("");
-  const [remaining, setRemaining] = useState<number>(() => RateLimiter.remaining());
+  const [remaining, setRemaining] = useState<number>(RateLimiter.LIMIT);
   const [showUpgrade, setShowUpgrade] = useState<boolean>(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setRemaining(RateLimiter.remaining());
+  }, []);
 
   const handleFile = useCallback(async (file: File | undefined) => {
     if (!file) return;
