@@ -360,8 +360,17 @@ export default function FitFind(): JSX.Element {
   };
 
   const total = items.reduce((sum, it) => {
-    const p = it.product?.price?.replace(/[^0-9.]/g, "");
-    return sum + (parseFloat(p || "0") || 0);
+    if (it.product?.price) {
+      const p = it.product.price.replace(/[^0-9.]/g, "");
+      const n = parseFloat(p);
+      if (!isNaN(n) && n > 0) return sum + n;
+    }
+    // Fall back to Gemini's price_estimate — take the lower bound of any range
+    if (it.price_estimate) {
+      const nums = it.price_estimate.match(/\d+(\.\d+)?/g);
+      if (nums) return sum + parseFloat(nums[0]);
+    }
+    return sum;
   }, 0);
 
   const handleShopClick = (item: OutfitItem): void => {
