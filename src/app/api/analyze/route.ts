@@ -62,7 +62,10 @@ function sanitizeModelItems(raw: unknown): Record<string, string>[] {
     .map((entry) => ({
       category: typeof entry.category === "string" ? entry.category.trim().slice(0, 120) : "",
       description: typeof entry.description === "string" ? entry.description.trim().slice(0, 400) : "",
-      brand_guess: typeof entry.brand_guess === "string" ? entry.brand_guess.trim().slice(0, 120) : "Unknown",
+      brand_guess:
+        typeof entry.brand_guess === "string" && entry.brand_guess.trim().length > 0
+          ? entry.brand_guess.trim().slice(0, 120)
+          : "Unknown",
       search_query: typeof entry.search_query === "string" ? entry.search_query.trim().slice(0, 300) : "",
       price_estimate: typeof entry.price_estimate === "string" ? entry.price_estimate.trim().slice(0, 80) : "",
     }))
