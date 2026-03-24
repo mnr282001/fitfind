@@ -4,6 +4,70 @@ import { createServiceClient } from "@/lib/supabase/service";
 
 const MODEL = "gemini-2.5-flash";
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+const MAX_BASE64_LENGTH = 20 * 1024 * 1024;
+const ALLOWED_MEDIA_TYPES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/heic",
+  "image/heif",
+  "image/bmp",
+  "image/avif",
+]);
+const BASE64_RE = /^[A-Za-z0-9+/=]+$/;
+
+type AnalyzeBody = { image: string; mediaType: string };
+
+function normalizeSimpleString(value: unknown, maxLen: number): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (!normalized || normalized.length > maxLen) return null;
+  return normalized;
+}
+
+function parseAnalyzeBody(raw: unknown): { ok: true; value: AnalyzeBody } | { ok: false; error: string } {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, error: "Request body must be a JSON object" };
+  }
+  const body = raw as Record<string, unknown>;
+
+  const image = normalizeSimpleString(body.image, MAX_BASE64_LENGTH);
+  if (!image) {
+    return { ok: false, error: "image must be a non-empty base64 string" };
+  }
+  if (!BASE64_RE.test(image)) {
+    return { ok: false, error: "image must be valid base64 characters only" };
+  }
+  // Base64 length must be divisible by 4.
+  if (image.length % 4 !== 0) {
+    return { ok: false, error: "image has invalid base64 length" };
+  }
+
+  const mediaTypeInput = normalizeSimpleString(body.mediaType, 64) ?? "image/jpeg";
+  const mediaType = mediaTypeInput.toLowerCase();
+  if (!ALLOWED_MEDIA_TYPES.has(mediaType)) {
+    return { ok: false, error: "mediaType is not supported" };
+  }
+
+  return { ok: true, value: { image, mediaType } };
+}
+
+function sanitizeModelItems(raw: unknown): Record<string, string>[] {
+  if (!Array.isArray(raw)) return [];
+
+  return raw
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry))
+    .map((entry) => ({
+      category: typeof entry.category === "string" ? entry.category.trim().slice(0, 120) : "",
+      description: typeof entry.description === "string" ? entry.description.trim().slice(0, 400) : "",
+      brand_guess: typeof entry.brand_guess === "string" ? entry.brand_guess.trim().slice(0, 120) : "Unknown",
+      search_query: typeof entry.search_query === "string" ? entry.search_query.trim().slice(0, 300) : "",
+      price_estimate: typeof entry.price_estimate === "string" ? entry.price_estimate.trim().slice(0, 80) : "",
+    }))
+    .filter((item) => item.category.length > 0 && item.search_query.length > 0);
+}
 
 function extForMediaType(mt: string): string {
   const m = mt.toLowerCase();
@@ -19,24 +83,28 @@ export async function POST(req: Request) {
   const { user, unauthorized } = await requireUser();
   if (!user) return unauthorized;
 
-  let body: { image?: string; mediaType?: string };
+  let rawBody: unknown;
   try {
-    body = await req.json();
+    rawBody = await req.json();
   } catch {
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const image = body.image;
-  const mediaType = typeof body.mediaType === "string" ? body.mediaType : "image/jpeg";
-  if (typeof image !== "string" || image.length === 0) {
-    return Response.json({ error: "Missing image" }, { status: 400 });
+  const parsedBody = parseAnalyzeBody(rawBody);
+  if (!parsedBody.ok) {
+    return Response.json({ error: parsedBody.error }, { status: 400 });
   }
+  const { image, mediaType } = parsedBody.value;
 
   let imageBuffer: Buffer;
   try {
     imageBuffer = Buffer.from(image, "base64");
   } catch {
     return Response.json({ error: "Invalid image encoding" }, { status: 400 });
+  }
+  // Invalid base64 can silently decode to empty/truncated buffers; reject if decoded bytes are empty.
+  if (imageBuffer.length === 0) {
+    return Response.json({ error: "Invalid image data" }, { status: 400 });
   }
   if (imageBuffer.length > MAX_IMAGE_BYTES) {
     return Response.json({ error: "Image too large" }, { status: 413 });
@@ -126,12 +194,17 @@ Respond ONLY with valid JSON array. No markdown.`,
     return Response.json({ error: "Gemini API error", detail: err }, { status: 502 });
   }
 
-  const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+  const data = (await res.json()) as {
+    candidates?: Array<{
+      content?: { parts?: Array<{ text?: string }> };
+    }>;
+  };
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "[]";
   const cleaned = text.replace(/```json\n?|```/g, "").trim();
 
   try {
-    const items = JSON.parse(cleaned);
+    const parsed = JSON.parse(cleaned) as unknown;
+    const items = sanitizeModelItems(parsed);
     if (svc) {
       await svc.from("analysis_runs").insert({
         id: runId,

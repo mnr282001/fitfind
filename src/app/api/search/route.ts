@@ -28,6 +28,78 @@ interface SerpMatch {
   thumbnail?: string;
 }
 
+const MAX_SEARCH_QUERY_LENGTH = 300;
+const MAX_BRAND_GUESS_LENGTH = 120;
+const MAX_CATEGORY_LENGTH = 80;
+const UUID_V4_LIKE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+type SearchBody = {
+  searchQuery: string;
+  brandGuess: string;
+  category: string | null;
+  analysisRunId: string | null;
+};
+
+function normalizeInputString(value: unknown, maxLen: number): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (!normalized) return "";
+  if (normalized.length > maxLen) return null;
+  return normalized;
+}
+
+function parseSearchBody(raw: unknown): { ok: true; value: SearchBody } | { ok: false; error: string } {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, error: "Request body must be a JSON object" };
+  }
+
+  const body = raw as Record<string, unknown>;
+  const searchQuery = normalizeInputString(body.searchQuery, MAX_SEARCH_QUERY_LENGTH);
+  if (searchQuery === null || searchQuery.length === 0) {
+    return { ok: false, error: "searchQuery must be a non-empty string up to 300 chars" };
+  }
+
+  const brandGuessNorm = normalizeInputString(body.brandGuess, MAX_BRAND_GUESS_LENGTH);
+  const brandGuess = brandGuessNorm ?? "";
+
+  const categoryNorm = normalizeInputString(body.category, MAX_CATEGORY_LENGTH);
+  if (body.category !== undefined && categoryNorm === null) {
+    return { ok: false, error: "category must be a string up to 80 chars" };
+  }
+  const category = categoryNorm && categoryNorm.length > 0 ? categoryNorm : null;
+
+  const analysisRunIdNorm = normalizeInputString(body.analysisRunId, 64);
+  if (body.analysisRunId !== undefined) {
+    if (analysisRunIdNorm === null || analysisRunIdNorm.length === 0 || !UUID_V4_LIKE_RE.test(analysisRunIdNorm)) {
+      return { ok: false, error: "analysisRunId must be a valid UUID string" };
+    }
+  }
+
+  return {
+    ok: true,
+    value: {
+      searchQuery,
+      brandGuess,
+      category,
+      analysisRunId: analysisRunIdNorm && analysisRunIdNorm.length > 0 ? analysisRunIdNorm : null,
+    },
+  };
+}
+
+function parseSerpMatches(raw: unknown): SerpMatch[] {
+  if (!Array.isArray(raw)) return [];
+
+  return raw
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry))
+    .map((entry) => ({
+      product_link: typeof entry.product_link === "string" ? entry.product_link : undefined,
+      title: typeof entry.title === "string" ? entry.title : undefined,
+      source: typeof entry.source === "string" ? entry.source : undefined,
+      price: typeof entry.price === "string" ? entry.price : undefined,
+      thumbnail: typeof entry.thumbnail === "string" ? entry.thumbnail : undefined,
+    }));
+}
+
 function getPartnerTier(source: string): number {
   const s = source.toLowerCase();
   for (const { names, tier } of PARTNER_TIERS) {
@@ -56,26 +128,18 @@ export async function POST(req: Request) {
   const { user, unauthorized } = await requireUser();
   if (!user) return unauthorized;
 
-  let body: {
-    searchQuery?: string;
-    brandGuess?: string;
-    category?: string;
-    analysisRunId?: string;
-  };
+  let rawBody: unknown;
   try {
-    body = await req.json();
+    rawBody = await req.json();
   } catch {
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const searchQuery = body.searchQuery;
-  const brandGuess = typeof body.brandGuess === "string" ? body.brandGuess : "";
-  const category = typeof body.category === "string" ? body.category : null;
-  const analysisRunIdIn = body.analysisRunId;
-
-  if (typeof searchQuery !== "string" || !searchQuery.trim()) {
-    return Response.json({ error: "Missing searchQuery" }, { status: 400 });
+  const parsedBody = parseSearchBody(rawBody);
+  if (!parsedBody.ok) {
+    return Response.json({ error: parsedBody.error }, { status: 400 });
   }
+  const { searchQuery, brandGuess, category, analysisRunId: analysisRunIdIn } = parsedBody.value;
 
   console.log(
     JSON.stringify({
@@ -116,7 +180,7 @@ export async function POST(req: Request) {
     clearTimeout(timeout);
   }
 
-  const matches: SerpMatch[] = (data.shopping_results as SerpMatch[]) || [];
+  const matches = parseSerpMatches((data as { shopping_results?: unknown }).shopping_results);
 
   const scored = matches
     .map((m) => ({ m, score: scoreMatch(m) }))
@@ -152,8 +216,7 @@ export async function POST(req: Request) {
 
   const svc = createServiceClient();
   if (svc) {
-    let linkedRunId: string | null =
-      typeof analysisRunIdIn === "string" && analysisRunIdIn.length > 0 ? analysisRunIdIn : null;
+    let linkedRunId: string | null = analysisRunIdIn;
     if (linkedRunId) {
       const { data: row } = await svc
         .from("analysis_runs")
