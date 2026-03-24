@@ -1,5 +1,18 @@
+import { requireUser } from "@/lib/auth/require-user";
+
 export async function POST(req: Request) {
+  const { user, unauthorized } = await requireUser();
+  if (!user) return unauthorized;
+
   const { image, mediaType } = await req.json();
+
+  console.log(
+    JSON.stringify({
+      event: "analyze_request",
+      userId: user.id,
+      email: user.email,
+    })
+  );
 
   // Gemini 2.5 Flash — ~$0.001 per image
   const res = await fetch(

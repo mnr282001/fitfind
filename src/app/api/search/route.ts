@@ -1,3 +1,4 @@
+import { requireUser } from "@/lib/auth/require-user";
 import { buildAffiliateUrl } from "@/lib/affiliate";
 
 // ─── PARTNER PRIORITY CONFIG ──────────────────────────────────────────────────
@@ -50,7 +51,19 @@ function scoreMatch(m: SerpMatch): number {
 }
 
 export async function POST(req: Request) {
+  const { user, unauthorized } = await requireUser();
+  if (!user) return unauthorized;
+
   const { searchQuery, brandGuess } = await req.json();
+
+  console.log(
+    JSON.stringify({
+      event: "search_request",
+      userId: user.id,
+      email: user.email,
+      query: searchQuery,
+    })
+  );
 
   const params = new URLSearchParams({
     engine: "google_shopping",

@@ -22,7 +22,10 @@
 
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef, useCallback, type CSSProperties, JSX } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 /* ═══════════════════════════════════════════════
    TYPES
@@ -64,6 +67,11 @@ interface RateLimiterType {
   consume: () => number;
   remaining: () => number;
   validateFile: (f: File) => RateLimitResult;
+}
+
+export interface FitFindUser {
+  id: string;
+  email: string | null;
 }
 
 /* ═══════════════════════════════════════════════
@@ -222,26 +230,34 @@ function fileToBase64(file: File): Promise<string> {
 
 async function identifyOutfit(base64: string, mediaType: string): Promise<IdentifiedItem[]> {
   const res = await fetch("/api/analyze", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ image: base64, mediaType }),
-});
-const data = await res.json();
-if (!res.ok) throw new Error(data.error ?? "Analyze request failed");
-return data.items;
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image: base64, mediaType }),
+  });
+  const data = (await res.json()) as { items?: IdentifiedItem[]; error?: string };
+  if (!res.ok) {
+    if (res.status === 401) throw new Error("Sign in to analyze outfits.");
+    throw new Error(typeof data.error === "string" ? data.error : "Analyze request failed");
+  }
+  return data.items ?? [];
 }
 
 async function searchProduct(item: IdentifiedItem): Promise<ProductResult> {
   const res = await fetch("/api/search", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    searchQuery: item.search_query,
-    category: item.category,
-    brandGuess: item.brand_guess,
-  }),
-});
-return await res.json();
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      searchQuery: item.search_query,
+      category: item.category,
+      brandGuess: item.brand_guess,
+    }),
+  });
+  const data = (await res.json()) as ProductResult & { error?: string };
+  if (!res.ok) {
+    if (res.status === 401) throw new Error("Sign in required for search.");
+    throw new Error(typeof data.error === "string" ? data.error : "Search request failed");
+  }
+  return data;
 }
 
 /* ═══════════════════════════════════════════════
@@ -289,7 +305,8 @@ function CatIcon({ cat }: { cat: string }): JSX.Element {
    MAIN COMPONENT
    ═══════════════════════════════════════════════ */
 
-export default function FitFind(): JSX.Element {
+export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Element {
+  const router = useRouter();
   const [image, setImage] = useState<string | null>(null);
   const [items, setItems] = useState<OutfitItem[]>([]);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -304,6 +321,16 @@ export default function FitFind(): JSX.Element {
   useEffect(() => {
     setRemaining(RateLimiter.remaining());
   }, []);
+
+  const handleSignOut = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.error(e);
+    }
+    router.refresh();
+  }, [router]);
 
   const handleFile = useCallback(async (file: File | undefined) => {
     if (!file) return;
@@ -421,31 +448,145 @@ export default function FitFind(): JSX.Element {
         @media(hover:hover){.item-row:hover{background:#151518!important}}
         .upgrade-card{position:relative;overflow:hidden}
         .upgrade-card::before{content:'';position:absolute;top:0;left:-100%;width:60%;height:100%;background:linear-gradient(90deg,transparent,rgba(209,163,139,.06),transparent);animation:shimmer 3s ease-in-out infinite}
+        .fitfind-email{display:none}
+        @media(min-width:380px){.fitfind-email{display:inline-block!important}}
       `}</style>
 
       <div style={{ width: "100%", maxWidth: 480, margin: "0 auto", padding: "0 16px", paddingBottom: "env(safe-area-inset-bottom, 20px)" }}>
 
         {/* ─── NAV ─── */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 0", position: "sticky", top: 0, zIndex: 20, background: "linear-gradient(to bottom, #08080a 60%, transparent)" }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 0", position: "sticky", top: 0, zIndex: 20, background: "linear-gradient(to bottom, #08080a 60%, transparent)", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 2, minWidth: 0 }}>
             <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em" }}>FIT</span>
             <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em", color: "#d1a38b" }}>FIND</span>
-            <span style={{ fontSize: 10, fontWeight: 500, color: "#555", marginLeft: 8 }}>
-              {remaining}/{RateLimiter.LIMIT}
-            </span>
+            {user && (
+              <span style={{ fontSize: 10, fontWeight: 500, color: "#555", marginLeft: 8 }}>
+                {remaining}/{RateLimiter.LIMIT}
+              </span>
+            )}
           </div>
-          {phase === "done" && (
-            <button
-              onClick={reset}
-              style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 100, color: "#aaa", padding: "7px 16px", fontSize: 12, fontWeight: 500, fontFamily: "inherit", cursor: "pointer" }}
-            >
-              + New
-            </button>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            {user && (
+              <>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 500,
+                    color: "#666",
+                    maxWidth: 100,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  className="fitfind-email"
+                  title={user.email ?? user.id}
+                >
+                  {user.email ?? `${user.id.slice(0, 8)}…`}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid rgba(255,255,255,.1)",
+                    borderRadius: 100,
+                    color: "#888",
+                    padding: "6px 12px",
+                    fontSize: 11,
+                    fontWeight: 500,
+                    fontFamily: "inherit",
+                    cursor: "pointer",
+                  }}
+                >
+                  Sign out
+                </button>
+              </>
+            )}
+            {!user && (
+              <>
+                <Link
+                  href="/login"
+                  style={{ fontSize: 12, fontWeight: 500, color: "#aaa", textDecoration: "none", padding: "6px 10px" }}
+                >
+                  Sign in
+                </Link>
+                <Link
+                  href="/signup"
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#08080a",
+                    background: "linear-gradient(135deg, #d1a38b, #b8806a)",
+                    textDecoration: "none",
+                    padding: "6px 12px",
+                    borderRadius: 100,
+                  }}
+                >
+                  Sign up
+                </Link>
+              </>
+            )}
+            {user && phase === "done" && (
+              <button
+                onClick={reset}
+                style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 100, color: "#aaa", padding: "7px 16px", fontSize: 12, fontWeight: 500, fontFamily: "inherit", cursor: "pointer" }}
+              >
+                + New
+              </button>
+            )}
+          </div>
         </div>
 
+        {/* ─── AUTH WALL ─── */}
+        {!user && (
+          <div style={{ paddingTop: 32, textAlign: "center" }}>
+            <h1 style={{ fontFamily: "'Playfair Display',serif", fontSize: "clamp(26px, 7vw, 36px)", fontWeight: 400, lineHeight: 1.2, marginBottom: 12 }}>
+              Sign in to use<br />
+              <span style={{ fontStyle: "italic", color: "#d1a38b" }}>FitFind</span>
+            </h1>
+            <p style={{ fontSize: 14, color: "#666", fontWeight: 300, maxWidth: 300, margin: "0 auto 28px" }}>
+              We need an account so every scan is tied to a real user.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 280, margin: "0 auto" }}>
+              <Link
+                href="/login"
+                style={{
+                  display: "block",
+                  background: "linear-gradient(135deg, #d1a38b, #b8806a)",
+                  color: "#08080a",
+                  fontSize: 15,
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  padding: "14px 20px",
+                  borderRadius: 12,
+                  textAlign: "center",
+                }}
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/signup"
+                style={{
+                  display: "block",
+                  background: "rgba(255,255,255,.04)",
+                  border: "1px solid rgba(255,255,255,.1)",
+                  color: "#ccc",
+                  fontSize: 14,
+                  fontWeight: 500,
+                  textDecoration: "none",
+                  padding: "12px 20px",
+                  borderRadius: 12,
+                  textAlign: "center",
+                }}
+              >
+                Create account
+              </Link>
+            </div>
+          </div>
+        )}
+
         {/* ─── UPLOAD STATE ─── */}
-        {!image && (
+        {user && !image && (
           <div style={{ paddingTop: 20 }}>
             <div style={{ textAlign: "center", marginBottom: 32 }}>
               <h1 style={{ fontFamily: "'Playfair Display',serif", fontSize: "clamp(28px, 8vw, 40px)", fontWeight: 400, lineHeight: 1.15, marginBottom: 10 }}>
@@ -508,7 +649,7 @@ export default function FitFind(): JSX.Element {
         )}
 
         {/* ─── RESULTS STATE ─── */}
-        {image && (
+        {user && image && (
           <div>
             {/* Photo */}
             <div style={{ position: "relative", borderRadius: 18, overflow: "hidden", marginBottom: 20 }}>
