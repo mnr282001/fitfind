@@ -670,10 +670,6 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
         {!user && (
           <div style={{ paddingTop: 20, paddingBottom: 14 }}>
             <div className="ff-panel card-enter" style={{ padding: "30px 22px 22px", maxWidth: 500, margin: "0 auto 12px", textAlign: "center" }}>
-              <div style={{ display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-                <span className="ff-tag">Photo to shopping links</span>
-                <span className="ff-tag">Private by default</span>
-              </div>
               <h1 style={{ fontFamily: "'Playfair Display',serif", fontSize: "clamp(30px, 8vw, 44px)", fontWeight: 400, lineHeight: 1.08, marginBottom: 12 }}>
                 Find every piece<br />
                 <span style={{ fontStyle: "italic", color: "#d1a38b" }}>FitFind</span>
