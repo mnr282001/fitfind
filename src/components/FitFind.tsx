@@ -200,7 +200,10 @@ const RateLimiter: RateLimiterType = (() => {
       return Math.max(0, LIMIT - s.count);
     },
     validateFile(f: File): RateLimitResult {
-      if (!f.type.startsWith("image/")) return { ok: false, reason: "Only images accepted." };
+      const extOk = /\.(jpe?g|png|gif|webp|heic|heif|bmp|avif)$/i.test(f.name);
+      if (!f.type.startsWith("image/") && !extOk) {
+        return { ok: false, reason: "Only images accepted." };
+      }
       if (f.size > MAX_MB * 1024 * 1024) return { ok: false, reason: `Max ${MAX_MB}MB.` };
       return { ok: true };
     },
@@ -211,16 +214,38 @@ const RateLimiter: RateLimiterType = (() => {
    FILE HELPERS
    ═══════════════════════════════════════════════ */
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => {
-      const result = r.result as string;
-      resolve(result.split(",")[1]);
-    };
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
+function isHeicLike(file: File): boolean {
+  const t = file.type.toLowerCase();
+  const n = file.name.toLowerCase();
+  return t === "image/heic" || t === "image/heif" || n.endsWith(".heic") || n.endsWith(".heif");
+}
+
+/** iPhone HEIC/HEIF is not drawable in most desktop browsers; convert to JPEG for preview + API. */
+async function normalizeImageFileForWeb(file: File): Promise<File> {
+  if (!isHeicLike(file)) return file;
+  try {
+    const { default: heic2any } = await import("heic2any");
+    const result = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
+    const blob = Array.isArray(result) ? result[0] : result;
+    const base = file.name.replace(/\.(heic|heif)$/i, "") || "photo";
+    return new File([blob], `${base}.jpg`, { type: "image/jpeg" });
+  } catch (e) {
+    console.error("[FitFind] HEIC conversion failed:", e);
+    throw new Error(
+      "Could not convert this photo. Export as JPEG from Photos, or try another image."
+    );
+  }
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk) as unknown as number[]);
+  }
+  return btoa(binary);
 }
 
 /* ═══════════════════════════════════════════════
@@ -228,21 +253,28 @@ function fileToBase64(file: File): Promise<string> {
    Routes through Next.js API routes in production
    ═══════════════════════════════════════════════ */
 
-async function identifyOutfit(base64: string, mediaType: string): Promise<IdentifiedItem[]> {
+async function identifyOutfit(
+  base64: string,
+  mediaType: string
+): Promise<{ items: IdentifiedItem[]; analysisRunId: string }> {
   const res = await fetch("/api/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ image: base64, mediaType }),
   });
-  const data = (await res.json()) as { items?: IdentifiedItem[]; error?: string };
+  const data = (await res.json()) as {
+    items?: IdentifiedItem[];
+    analysisRunId?: string;
+    error?: string;
+  };
   if (!res.ok) {
     if (res.status === 401) throw new Error("Sign in to analyze outfits.");
     throw new Error(typeof data.error === "string" ? data.error : "Analyze request failed");
   }
-  return data.items ?? [];
+  return { items: data.items ?? [], analysisRunId: data.analysisRunId ?? "" };
 }
 
-async function searchProduct(item: IdentifiedItem): Promise<ProductResult> {
+async function searchProduct(item: IdentifiedItem, analysisRunId?: string): Promise<ProductResult> {
   const res = await fetch("/api/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -250,6 +282,7 @@ async function searchProduct(item: IdentifiedItem): Promise<ProductResult> {
       searchQuery: item.search_query,
       category: item.category,
       brandGuess: item.brand_guess,
+      ...(analysisRunId ? { analysisRunId } : {}),
     }),
   });
   const data = (await res.json()) as ProductResult & { error?: string };
@@ -317,10 +350,20 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
   const [remaining, setRemaining] = useState<number>(RateLimiter.LIMIT);
   const [showUpgrade, setShowUpgrade] = useState<boolean>(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const previewBlobUrlRef = useRef<string | null>(null);
+
+  const revokePreviewUrl = useCallback(() => {
+    if (previewBlobUrlRef.current) {
+      URL.revokeObjectURL(previewBlobUrlRef.current);
+      previewBlobUrlRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     setRemaining(RateLimiter.remaining());
   }, []);
+
+  useEffect(() => () => revokePreviewUrl(), [revokePreviewUrl]);
 
   const handleSignOut = useCallback(async () => {
     try {
@@ -344,23 +387,47 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
 
     const left = RateLimiter.consume();
     setRemaining(left);
-    setImage(URL.createObjectURL(file));
     setItems([]);
     setPhase("analyzing");
     setProgress("Scanning your fit...");
     setExpandedItem(null);
     setShowUpgrade(false);
 
+    revokePreviewUrl();
+
+    let working: File;
     try {
-      const base64 = await fileToBase64(file);
-      const identified = await identifyOutfit(base64, file.type || "image/jpeg");
+      working = await normalizeImageFileForWeb(file);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not prepare this image.");
+      setPhase("idle");
+      setProgress("");
+      return;
+    }
+
+    let previewUrl: string;
+    try {
+      previewUrl = URL.createObjectURL(working);
+    } catch {
+      setError("Could not create a preview for this file.");
+      setPhase("idle");
+      setProgress("");
+      return;
+    }
+    previewBlobUrlRef.current = previewUrl;
+    setImage(previewUrl);
+
+    try {
+      const base64 = await fileToBase64(working);
+      const mediaType = working.type || "image/jpeg";
+      const { items: identified, analysisRunId } = await identifyOutfit(base64, mediaType);
       setProgress(`${identified.length} pieces found — shopping...`);
       setPhase("searching");
 
       const results: OutfitItem[] = [];
       for (let i = 0; i < identified.length; i++) {
         setProgress(`Finding ${identified[i].category.toLowerCase()} (${i + 1}/${identified.length})`);
-        const product = await searchProduct(identified[i]);
+        const product = await searchProduct(identified[i], analysisRunId || undefined);
         results.push({ ...identified[i], product });
         setItems([...results]);
       }
@@ -372,9 +439,10 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
       setPhase("idle");
       setProgress("Couldn't analyze — try another photo.");
     }
-  }, []);
+  }, [revokePreviewUrl]);
 
   const reset = (): void => {
+    revokePreviewUrl();
     setImage(null);
     setItems([]);
     setPhase("idle");

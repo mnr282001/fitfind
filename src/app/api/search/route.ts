@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth/require-user";
 import { buildAffiliateUrl } from "@/lib/affiliate";
+import { createServiceClient } from "@/lib/supabase/service";
 
 // ─── PARTNER PRIORITY CONFIG ──────────────────────────────────────────────────
 // Set to [] to disable all partnerships (no priority boosting).
@@ -44,17 +45,37 @@ function scoreMatch(m: SerpMatch): number {
     return -1;
   }
 
-  let score = getPartnerTier(m.source ?? "") * 10; // partner boost
-  if (m.price) score += 3;                          // has a price = stronger match signal
+  let score = getPartnerTier(m.source ?? "") * 10;
+  if (m.price) score += 3;
   if (m.thumbnail) score += 1;
   return score;
 }
 
 export async function POST(req: Request) {
+  const t0 = Date.now();
   const { user, unauthorized } = await requireUser();
   if (!user) return unauthorized;
 
-  const { searchQuery, brandGuess } = await req.json();
+  let body: {
+    searchQuery?: string;
+    brandGuess?: string;
+    category?: string;
+    analysisRunId?: string;
+  };
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const searchQuery = body.searchQuery;
+  const brandGuess = typeof body.brandGuess === "string" ? body.brandGuess : "";
+  const category = typeof body.category === "string" ? body.category : null;
+  const analysisRunIdIn = body.analysisRunId;
+
+  if (typeof searchQuery !== "string" || !searchQuery.trim()) {
+    return Response.json({ error: "Missing searchQuery" }, { status: 400 });
+  }
 
   console.log(
     JSON.stringify({
@@ -76,11 +97,20 @@ export async function POST(req: Request) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
 
+  let serpStatus: "ok" | "error" = "ok";
+  let rawError: string | null = null;
   let data: Record<string, unknown> = {};
+
   try {
     const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: controller.signal });
     data = await res.json();
+    if (!res.ok) {
+      serpStatus = "error";
+      rawError = JSON.stringify(data).slice(0, 4000);
+    }
   } catch (err) {
+    serpStatus = "error";
+    rawError = err instanceof Error ? err.message : String(err);
     console.error("[FitFind search] fetch failed:", err);
   } finally {
     clearTimeout(timeout);
@@ -88,7 +118,6 @@ export async function POST(req: Request) {
 
   const matches: SerpMatch[] = (data.shopping_results as SerpMatch[]) || [];
 
-  // Score all matches and pick the best one
   const scored = matches
     .map((m) => ({ m, score: scoreMatch(m) }))
     .filter(({ score }) => score >= 0)
@@ -96,9 +125,11 @@ export async function POST(req: Request) {
 
   const best = scored[0];
 
+  let responseBody: Record<string, unknown>;
+
   if (best && best.score >= MIN_SCORE) {
     const top = best.m;
-    return Response.json({
+    responseBody = {
       product_name: top.title || searchQuery,
       brand: top.source || brandGuess,
       price: top.price || null,
@@ -106,17 +137,44 @@ export async function POST(req: Request) {
       retailer: top.source || "Unknown",
       thumbnail: top.thumbnail || null,
       match_confidence: top.price ? "high" : "medium",
+    };
+  } else {
+    const fallbackUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}&tbm=shop`;
+    responseBody = {
+      product_name: searchQuery,
+      brand: brandGuess,
+      price: null,
+      url: buildAffiliateUrl(fallbackUrl),
+      retailer: "Google Shopping",
+      match_confidence: "low",
+    };
+  }
+
+  const svc = createServiceClient();
+  if (svc) {
+    let linkedRunId: string | null =
+      typeof analysisRunIdIn === "string" && analysisRunIdIn.length > 0 ? analysisRunIdIn : null;
+    if (linkedRunId) {
+      const { data: row } = await svc
+        .from("analysis_runs")
+        .select("user_id")
+        .eq("id", linkedRunId)
+        .maybeSingle();
+      if (!row || row.user_id !== user.id) linkedRunId = null;
+    }
+
+    await svc.from("search_requests").insert({
+      user_id: user.id,
+      analysis_run_id: linkedRunId,
+      search_query: searchQuery,
+      brand_guess: brandGuess || null,
+      category,
+      response: responseBody,
+      latency_ms: Date.now() - t0,
+      status: serpStatus,
+      raw_error: rawError,
     });
   }
 
-  // Fallback: Google Shopping search
-  const fallbackUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}&tbm=shop`;
-  return Response.json({
-    product_name: searchQuery,
-    brand: brandGuess,
-    price: null,
-    url: buildAffiliateUrl(fallbackUrl),
-    retailer: "Google Shopping",
-    match_confidence: "low",
-  });
+  return Response.json(responseBody);
 }

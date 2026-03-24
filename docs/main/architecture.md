@@ -64,6 +64,7 @@ src/
 │   └── supabase/
 │       ├── client.ts           # Browser Supabase client
 │       ├── server.ts           # Server Supabase client (cookies)
+│       ├── service.ts          # Service-role client (Storage + DB writes, API only)
 │       └── middleware.ts       # Session refresh helper
 └── middleware.ts               # Runs Supabase session update on matched routes
 ```

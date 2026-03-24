@@ -1,30 +1,64 @@
-# Database (Supabase Postgres)
+# Database (Supabase Postgres & Storage)
 
-FitFind does **not** require custom tables for core auth: users live in Supabase **`auth.users`**.
+Auth users live in **`auth.users`**. Application data uses **`public.analysis_runs`**, **`public.search_requests`**, and the private Storage bucket **`uploads`**.
 
-Optional SQL lives under **`supabase/migrations/`** in the repository. Apply manually in the Supabase **SQL Editor** or via the **Supabase CLI** linked to your project.
+Apply migrations from **`supabase/migrations/`** in the Supabase **SQL Editor** (or via **Supabase CLI** linked to your project). Order matters: run **`20250324120000_profiles.sql`** only if you want the optional profiles mirror; run **`20250326120000_data_layer.sql`** for the core data layer.
 
-## `20250324120000_profiles.sql`
+---
 
-**Purpose:** mirror each new `auth.users` row into **`public.profiles`** (`id`, `email`, `created_at`) for convenient reporting in SQL or the Table Editor.
+## `20250326120000_data_layer.sql` (required for persistence)
 
-**Contents (summary)**
+### Storage
 
-- `public.profiles` with FK to `auth.users` (`on delete cascade`).
-- Row Level Security enabled with a policy allowing users to **select** only their own row (`auth.uid() = id`).
-- Trigger **`on_auth_user_created`** on `auth.users` **`after insert`** calling **`public.handle_new_user`** (`security definer`) to insert the profile row.
+- Bucket **`uploads`**, **not public**.
+- The Next.js API uploads objects with the **service role** (`SUPABASE_SERVICE_ROLE_KEY`). The browser does not receive upload permissions.
+- Object path pattern: `{user_id}/{analysis_run_id}.{ext}` (see `/api/analyze`).
 
-**Notes**
+### Tables
 
-- If your Postgres version rejects `execute function`, check Supabase docs for the equivalent `execute procedure` syntax for your instance.
-- Inserts into `profiles` from the app server are not required for sign-up if the trigger is installed; the app currently does not read `profiles` in application code.
+**`analysis_runs`**
 
-## Future data model (not implemented in app code yet)
+| Column | Purpose |
+|--------|---------|
+| `id` | UUID primary key; same id as returned to the client as `analysisRunId` |
+| `user_id` | Owner (`auth.users.id`) |
+| `storage_path` | Path inside bucket `uploads`, or null if upload failed / skipped |
+| `media_type` | MIME type sent to Gemini |
+| `model` | e.g. `gemini-2.5-flash` |
+| `status` | `ok` \| `error` |
+| `latency_ms` | End-to-end server time for the analyze request |
+| `items` | Parsed Gemini JSON array (jsonb); null on failure |
+| `raw_error` | Truncated error text when `status = error` |
+| `created_at` | Timestamp |
 
-If you add durable storage for uploads or model output, typical patterns are:
+**`search_requests`**
 
-- **`analysis_runs`**: `user_id` → `auth.users.id`, storage path, `items` JSONB, timestamps.
-- **`search_requests`**: FK to analysis run, query, response JSONB.
-- Policies: `user_id = auth.uid()` for `select`/`insert` when using the anon key from authenticated clients, or service-role-only writes from Next.js API routes.
+| Column | Purpose |
+|--------|---------|
+| `id` | UUID (default `gen_random_uuid()`) |
+| `user_id` | Caller |
+| `analysis_run_id` | Optional FK to `analysis_runs`; set only when the client passes a valid `analysisRunId` that belongs to the same user |
+| `search_query`, `brand_guess`, `category` | Request fields |
+| `response` | JSON returned to the client (product card or fallback) |
+| `latency_ms` | SerpAPI round-trip (including timeout handling) |
+| `status` | `ok` if HTTP fetch succeeded; `error` if fetch failed or non-OK HTTP |
+| `raw_error` | Optional diagnostic string |
+| `created_at` | Timestamp |
 
-Document any new migrations in this folder when you add them on the same branch.
+### Row Level Security
+
+- RLS is **enabled** on both tables.
+- **Select:** authenticated users may read **only** rows where `user_id = auth.uid()` (for a future “My scans” UI using the anon key + session).
+- **Insert / update / delete:** not granted to end users; API routes use the **service role**, which **bypasses RLS**.
+
+---
+
+## `20250324120000_profiles.sql` (optional)
+
+Mirrors new `auth.users` rows into **`public.profiles`** for reporting. See the migration file for trigger details.
+
+---
+
+## When persistence is disabled
+
+If **`SUPABASE_SERVICE_ROLE_KEY`** is unset, `createServiceClient()` returns `null`: Gemini and SerpAPI still run, but **no Storage upload** and **no DB rows** are written. The analyze response still includes `analysisRunId` for client correlation, but that id will not exist in the database until persistence is enabled.
