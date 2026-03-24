@@ -609,11 +609,11 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
         {!user && (
           <div style={{ paddingTop: 32, textAlign: "center" }}>
             <h1 style={{ fontFamily: "'Playfair Display',serif", fontSize: "clamp(26px, 7vw, 36px)", fontWeight: 400, lineHeight: 1.2, marginBottom: 12 }}>
-              Sign in to use<br />
+              Sign in to start<br />
               <span style={{ fontStyle: "italic", color: "#d1a38b" }}>FitFind</span>
             </h1>
             <p style={{ fontSize: 14, color: "#666", fontWeight: 300, maxWidth: 300, margin: "0 auto 28px" }}>
-              We need an account so every scan is tied to a real user.
+              Create an account so each scan is saved to you and your results stay personal.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 280, margin: "0 auto" }}>
               <Link
