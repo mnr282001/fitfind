@@ -5,9 +5,9 @@ import { buildAffiliateUrl } from "@/lib/affiliate";
 // Matched against the `source` (retailer name) field, case-insensitive.
 const PARTNER_TIERS: { names: string[]; tier: number }[] = [
   // Tier 1 — highest priority (testing only, no real partnership)
-  { names: ["zara", "uniqlo", "h&m"], tier: 2 },
-  // Tier 2 — secondary priority (testing only, no real partnership)
-  { names: ["alfani", "banana republic"], tier: 1 },
+  // { names: ["zara", "uniqlo", "h&m"], tier: 2 },
+  // // Tier 2 — secondary priority (testing only, no real partnership)
+  // { names: ["alfani", "banana republic"], tier: 1 },
 ];
 // ─────────────────────────────────────────────────────────────────────────────
 
