@@ -489,11 +489,32 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
 
   /* ─── RENDER ─── */
   return (
-    <div style={{ minHeight: "100dvh", background: "#08080a", color: "#eae6df", fontFamily: "'Outfit','Helvetica Neue',sans-serif", WebkitFontSmoothing: "antialiased", overflowX: "hidden" }}>
+    <div
+      style={{
+        minHeight: "100dvh",
+        background:
+          "radial-gradient(1200px 700px at 8% -10%, rgba(209,163,139,.22), transparent 58%), radial-gradient(900px 520px at 94% 8%, rgba(118,136,255,.12), transparent 48%), #07070a",
+        color: "#f1ede7",
+        fontFamily: "'Outfit','Helvetica Neue',sans-serif",
+        WebkitFontSmoothing: "antialiased",
+        overflowX: "hidden",
+      }}
+    >
       {/* eslint-disable-next-line @next/next/no-page-custom-font */}
       <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
       <style>{`
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+        :root{
+          --ff-bg:#07070a;
+          --ff-surface:rgba(255,255,255,.03);
+          --ff-surface-strong:rgba(255,255,255,.05);
+          --ff-stroke:rgba(255,255,255,.10);
+          --ff-stroke-soft:rgba(255,255,255,.06);
+          --ff-text:#f1ede7;
+          --ff-muted:#9e958c;
+          --ff-accent:#d1a38b;
+          --ff-accent-2:#b8806a;
+        }
         @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
         @keyframes scanMove{0%{top:-2px}100%{top:calc(100% + 2px)}}
         @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.02)}}
@@ -518,12 +539,52 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
         .upgrade-card::before{content:'';position:absolute;top:0;left:-100%;width:60%;height:100%;background:linear-gradient(90deg,transparent,rgba(209,163,139,.06),transparent);animation:shimmer 3s ease-in-out infinite}
         .fitfind-email{display:none}
         @media(min-width:380px){.fitfind-email{display:inline-block!important}}
+        .ff-shell{
+          position:relative;
+          isolation:isolate;
+          width:100%;
+          max-width:560px;
+          margin:0 auto;
+          padding:0 16px env(safe-area-inset-bottom, 20px);
+        }
+        .ff-shell::before{
+          content:'';
+          position:fixed;
+          inset:0;
+          pointer-events:none;
+          background-image:radial-gradient(rgba(255,255,255,.035) 1px, transparent 1px);
+          background-size:3px 3px;
+          opacity:.2;
+          z-index:-2;
+        }
+        .ff-nav{
+          backdrop-filter:blur(14px);
+          -webkit-backdrop-filter:blur(14px);
+          border-bottom:1px solid rgba(255,255,255,.06);
+        }
+        .ff-panel{
+          background:linear-gradient(165deg, rgba(255,255,255,.045), rgba(255,255,255,.015));
+          border:1px solid rgba(255,255,255,.08);
+          box-shadow:0 26px 80px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.06);
+          border-radius:24px;
+        }
+        .ff-tag{
+          font-size:11px;
+          letter-spacing:.06em;
+          text-transform:uppercase;
+          color:var(--ff-muted);
+          padding:6px 11px;
+          border-radius:999px;
+          border:1px solid var(--ff-stroke-soft);
+          background:rgba(255,255,255,.02);
+        }
+        .ff-soft-text{color:var(--ff-muted)}
       `}</style>
 
-      <div style={{ width: "100%", maxWidth: 480, margin: "0 auto", padding: "0 16px", paddingBottom: "env(safe-area-inset-bottom, 20px)" }}>
+      <div className="ff-shell">
 
         {/* ─── NAV ─── */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 0", position: "sticky", top: 0, zIndex: 20, background: "linear-gradient(to bottom, #08080a 60%, transparent)", gap: 8 }}>
+        <div className="ff-nav" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0", position: "sticky", top: 0, zIndex: 20, background: "linear-gradient(to bottom, rgba(7,7,10,.88) 72%, transparent)", gap: 8, marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 2, minWidth: 0 }}>
             <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em" }}>FIT</span>
             <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em", color: "#d1a38b" }}>FIND</span>
@@ -558,7 +619,7 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
                     background: "transparent",
                     border: "1px solid rgba(255,255,255,.1)",
                     borderRadius: 100,
-                    color: "#888",
+                    color: "#c2b8ad",
                     padding: "6px 12px",
                     fontSize: 11,
                     fontWeight: 500,
@@ -574,7 +635,7 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
               <>
                 <Link
                   href="/login"
-                  style={{ fontSize: 12, fontWeight: 500, color: "#aaa", textDecoration: "none", padding: "6px 10px" }}
+                  style={{ fontSize: 12, fontWeight: 500, color: "#c8c1b8", textDecoration: "none", padding: "6px 10px" }}
                 >
                   Sign in
                 </Link>
@@ -583,7 +644,7 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
                   style={{
                     fontSize: 12,
                     fontWeight: 600,
-                    color: "#08080a",
+                    color: "#120f0c",
                     background: "linear-gradient(135deg, #d1a38b, #b8806a)",
                     textDecoration: "none",
                     padding: "6px 12px",
@@ -608,26 +669,31 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
         {/* ─── AUTH WALL ─── */}
         {!user && (
           <div style={{ paddingTop: 32, textAlign: "center" }}>
-            <h1 style={{ fontFamily: "'Playfair Display',serif", fontSize: "clamp(26px, 7vw, 36px)", fontWeight: 400, lineHeight: 1.2, marginBottom: 12 }}>
-              Sign in to start<br />
-              <span style={{ fontStyle: "italic", color: "#d1a38b" }}>FitFind</span>
-            </h1>
-            <p style={{ fontSize: 14, color: "#666", fontWeight: 300, maxWidth: 300, margin: "0 auto 28px" }}>
-              Create an account so each scan is saved to you and your results stay personal.
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 280, margin: "0 auto" }}>
+            <div className="ff-panel card-enter" style={{ padding: "34px 24px 26px", maxWidth: 420, margin: "0 auto" }}>
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+                <span className="ff-tag">Private by default</span>
+              </div>
+              <h1 style={{ fontFamily: "'Playfair Display',serif", fontSize: "clamp(28px, 7vw, 40px)", fontWeight: 400, lineHeight: 1.15, marginBottom: 12 }}>
+                Sign in to start<br />
+                <span style={{ fontStyle: "italic", color: "#d1a38b" }}>FitFind</span>
+              </h1>
+              <p style={{ fontSize: 14, color: "#9e958c", fontWeight: 300, maxWidth: 300, margin: "0 auto 28px", lineHeight: 1.55 }}>
+                Create an account so each scan is saved to you and your results stay personal.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 300, margin: "0 auto" }}>
               <Link
                 href="/login"
                 style={{
                   display: "block",
                   background: "linear-gradient(135deg, #d1a38b, #b8806a)",
-                  color: "#08080a",
+                  color: "#120f0c",
                   fontSize: 15,
                   fontWeight: 600,
                   textDecoration: "none",
                   padding: "14px 20px",
-                  borderRadius: 12,
+                  borderRadius: 14,
                   textAlign: "center",
+                  boxShadow: "0 12px 30px rgba(209,163,139,.25)",
                 }}
               >
                 Sign in
@@ -636,19 +702,20 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
                 href="/signup"
                 style={{
                   display: "block",
-                  background: "rgba(255,255,255,.04)",
-                  border: "1px solid rgba(255,255,255,.1)",
-                  color: "#ccc",
+                  background: "rgba(255,255,255,.035)",
+                  border: "1px solid rgba(255,255,255,.12)",
+                  color: "#d9d2c8",
                   fontSize: 14,
                   fontWeight: 500,
                   textDecoration: "none",
                   padding: "12px 20px",
-                  borderRadius: 12,
+                  borderRadius: 14,
                   textAlign: "center",
                 }}
               >
                 Create account
               </Link>
+            </div>
             </div>
           </div>
         )}
@@ -656,12 +723,13 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
         {/* ─── UPLOAD STATE ─── */}
         {user && !image && (
           <div style={{ paddingTop: 20 }}>
+            <div className="ff-panel card-enter" style={{ padding: "28px 18px 20px", marginBottom: 14 }}>
             <div style={{ textAlign: "center", marginBottom: 32 }}>
               <h1 style={{ fontFamily: "'Playfair Display',serif", fontSize: "clamp(28px, 8vw, 40px)", fontWeight: 400, lineHeight: 1.15, marginBottom: 10 }}>
                 Snap a fit.<br />
                 <span style={{ fontStyle: "italic", color: "#d1a38b" }}>Shop every piece.</span>
               </h1>
-              <p style={{ fontSize: 14, color: "#666", fontWeight: 300, maxWidth: 280, margin: "0 auto" }}>
+              <p style={{ fontSize: 14, color: "#9e958c", fontWeight: 300, maxWidth: 300, margin: "0 auto", lineHeight: 1.55 }}>
                 Upload any outfit photo and we&apos;ll identify each item with links to buy.
               </p>
             </div>
@@ -674,8 +742,8 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
               onClick={() => fileRef.current?.click()}
               style={{
                 width: "100%", aspectRatio: "3/4", maxHeight: "55dvh", borderRadius: 20,
-                border: `1.5px dashed ${dragOver ? "#d1a38b" : "#222"}`,
-                background: dragOver ? "rgba(209,163,139,.04)" : "rgba(255,255,255,.015)",
+                border: `1.5px dashed ${dragOver ? "#d1a38b" : "rgba(255,255,255,.18)"}`,
+                background: dragOver ? "rgba(209,163,139,.06)" : "linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015))",
                 display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                 cursor: "pointer", position: "relative", overflow: "hidden",
               }}
@@ -688,13 +756,13 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" />
                 </svg>
               </div>
-              <span style={{ fontSize: 15, fontWeight: 500, color: "#ccc", position: "relative", zIndex: 1 }}>Upload outfit photo</span>
-              <span style={{ fontSize: 12, color: "#555", marginTop: 6, position: "relative", zIndex: 1 }}>or drag & drop here</span>
+              <span style={{ fontSize: 15, fontWeight: 500, color: "#dfd7ce", position: "relative", zIndex: 1 }}>Upload outfit photo</span>
+              <span style={{ fontSize: 12, color: "#978f86", marginTop: 6, position: "relative", zIndex: 1 }}>or drag & drop here</span>
             </div>
 
             <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 20, flexWrap: "wrap" }}>
               {["Street style", "Mirror selfie", "Flat lay", "Full body"].map((t) => (
-                <span key={t} style={{ fontSize: 11, color: "#555", border: "1px solid #1a1a1a", borderRadius: 100, padding: "5px 12px" }}>{t}</span>
+                <span key={t} style={{ fontSize: 11, color: "#91877d", border: "1px solid rgba(255,255,255,.09)", borderRadius: 100, padding: "6px 12px", background: "rgba(255,255,255,.015)" }}>{t}</span>
               ))}
             </div>
 
@@ -713,14 +781,16 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
                 </button>
               </div>
             )}
+            </div>
           </div>
         )}
 
         {/* ─── RESULTS STATE ─── */}
         {user && image && (
-          <div>
+          <div className="card-enter">
             {/* Photo */}
-            <div style={{ position: "relative", borderRadius: 18, overflow: "hidden", marginBottom: 20 }}>
+            <div className="ff-panel" style={{ padding: 10, marginBottom: 12 }}>
+            <div style={{ position: "relative", borderRadius: 18, overflow: "hidden", marginBottom: 8 }}>
               <img src={image} alt="Uploaded outfit" style={{ width: "100%", display: "block", borderRadius: 18 }} />
               {(phase === "analyzing" || phase === "searching") && (
                 <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
@@ -734,6 +804,7 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
                   <span style={{ fontSize: 11, color: "#999", lineHeight: 1.2 }}>pieces<br />found</span>
                 </div>
               )}
+            </div>
             </div>
 
             {/* Progress */}
@@ -749,8 +820,8 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
               <div>
                 {/* Total bar */}
                 {phase === "done" && (
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "rgba(209,163,139,.04)", border: "1px solid rgba(209,163,139,.08)", borderRadius: 12, marginBottom: 14 }}>
-                    <span style={{ fontSize: 12, color: "#888" }}>Estimated total</span>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "linear-gradient(135deg, rgba(209,163,139,.10), rgba(209,163,139,.04))", border: "1px solid rgba(209,163,139,.18)", borderRadius: 14, marginBottom: 14 }}>
+                    <span style={{ fontSize: 12, color: "#b9afa5" }}>Estimated total</span>
                                         <span style={{ fontSize: 18, fontWeight: 600, color: "#d1a38b" }}>
                                           {total.toLocaleString("en-US", { style: "currency", currency: "USD" })}
                                         </span>
@@ -766,10 +837,12 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
                                           onClick={() => setExpandedItem(expandedItem === idx ? null : idx)}
                                           style={{
                                             padding: "14px 16px",
-                                            background: expandedItem === idx ? "#151518" : "rgba(255,255,255,.02)",
-                                            border: "1px solid rgba(255,255,255,.06)",
-                                            borderRadius: 12,
+                                            background: expandedItem === idx ? "rgba(255,255,255,.075)" : "rgba(255,255,255,.03)",
+                                            border: "1px solid rgba(255,255,255,.09)",
+                                            borderRadius: 14,
                                             cursor: "pointer",
+                                            backdropFilter: "blur(8px)",
+                                            WebkitBackdropFilter: "blur(8px)",
                                           }}
                                         >
                                           <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
@@ -777,8 +850,8 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
                                               <CatIcon cat={it.category} />
                                             </div>
                                             <div style={{ flex: 1, minWidth: 0 }}>
-                                              <div style={{ fontSize: 13, fontWeight: 500, color: "#ccc", marginBottom: 3 }}>{it.category}</div>
-                                              <div style={{ fontSize: 11, color: "#666", lineHeight: 1.3 }}>{it.description}</div>
+                                              <div style={{ fontSize: 13, fontWeight: 500, color: "#e2dbd2", marginBottom: 3 }}>{it.category}</div>
+                                              <div style={{ fontSize: 11, color: "#9e958c", lineHeight: 1.35 }}>{it.description}</div>
                                               {it.product && (
                                                 <div style={{ fontSize: 10, color: "#d1a38b", marginTop: 4, fontWeight: 500 }}>
                                                   {it.product.brand} · {it.product.retailer}
