@@ -43,6 +43,20 @@ export function FitFindNav({ user, isAdmin, remaining, limit, showReset, onReset
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
         {user && (
           <>
+            <Link
+              href="/history"
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: "#c8c1b8",
+                textDecoration: "none",
+                border: "1px solid rgba(255,255,255,.14)",
+                borderRadius: 999,
+                padding: "6px 10px",
+              }}
+            >
+              History
+            </Link>
             {isAdmin && (
               <Link
                 href="/admin"
