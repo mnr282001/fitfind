@@ -361,6 +361,7 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
   const [showUpgrade, setShowUpgrade] = useState<boolean>(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const previewBlobUrlRef = useRef<string | null>(null);
+  const timelineRef = useRef<HTMLDivElement | null>(null);
   const resultsAnchorRef = useRef<HTMLDivElement | null>(null);
 
   const revokePreviewUrl = useCallback(() => {
@@ -377,14 +378,20 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
   useEffect(() => () => revokePreviewUrl(), [revokePreviewUrl]);
 
   const scrollToResults = useCallback(() => {
-    if (!resultsAnchorRef.current) return;
-    resultsAnchorRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+    const target = timelineRef.current ?? resultsAnchorRef.current;
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
   useEffect(() => {
     if (!image) return;
     if (phase !== "analyzing" && phase !== "searching") return;
-    const id = window.setTimeout(() => scrollToResults(), 120);
+    const id = window.setTimeout(() => {
+      // Double RAF ensures layout has committed before scrolling.
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => scrollToResults());
+      });
+    }, 0);
     return () => window.clearTimeout(id);
   }, [image, phase, items.length, scrollToResults]);
 
@@ -932,7 +939,7 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
             </div>
 
             {(isProcessing || phase === "done") && (
-              <div className="timeline-shell">
+              <div ref={timelineRef} className="timeline-shell">
                 {TIMELINE_STEPS.map((step, idx) => {
                   const done = timelineStep > idx;
                   const active = timelineStep === idx;
