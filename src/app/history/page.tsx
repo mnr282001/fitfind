@@ -123,6 +123,25 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
         fontFamily: "'Outfit','Helvetica Neue',sans-serif",
       }}
     >
+      <div style={{ marginBottom: 12 }}>
+        <Link
+          href="/"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            color: "#d1a38b",
+            textDecoration: "none",
+            fontSize: 13,
+            fontWeight: 600,
+            border: "1px solid rgba(209,163,139,.35)",
+            borderRadius: 999,
+            padding: "6px 12px",
+          }}
+        >
+          ← Back
+        </Link>
+      </div>
       <div
         style={{
           border: "1px solid rgba(255,255,255,.12)",
