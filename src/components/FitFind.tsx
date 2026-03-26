@@ -309,6 +309,15 @@ const CONF_LABEL: Record<MatchConfidence, string> = {
   low: "Similar",
 };
 
+const TIMELINE_STEPS = ["Analyzing photo", "Identifying pieces", "Finding product matches"] as const;
+
+function getTimelineStep(phase: Phase): number {
+  if (phase === "analyzing") return 0;
+  if (phase === "searching") return 2;
+  if (phase === "done") return 3;
+  return -1;
+}
+
 /* ═══════════════════════════════════════════════
    CATEGORY ICON
    ═══════════════════════════════════════════════ */
@@ -342,6 +351,7 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
   const router = useRouter();
   const [image, setImage] = useState<string | null>(null);
   const [items, setItems] = useState<OutfitItem[]>([]);
+  const [identifiedCount, setIdentifiedCount] = useState<number>(0);
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState<string>("");
   const [dragOver, setDragOver] = useState<boolean>(false);
@@ -388,6 +398,7 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
     const left = RateLimiter.consume();
     setRemaining(left);
     setItems([]);
+    setIdentifiedCount(0);
     setPhase("analyzing");
     setProgress("Scanning your fit...");
     setExpandedItem(null);
@@ -421,15 +432,15 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
       const base64 = await fileToBase64(working);
       const mediaType = working.type || "image/jpeg";
       const { items: identified, analysisRunId } = await identifyOutfit(base64, mediaType);
+      setIdentifiedCount(identified.length);
+      setItems(identified.map((it) => ({ ...it })));
       setProgress(`${identified.length} pieces found — shopping...`);
       setPhase("searching");
 
-      const results: OutfitItem[] = [];
       for (let i = 0; i < identified.length; i++) {
         setProgress(`Finding ${identified[i].category.toLowerCase()} (${i + 1}/${identified.length})`);
         const product = await searchProduct(identified[i], analysisRunId || undefined);
-        results.push({ ...identified[i], product });
-        setItems([...results]);
+        setItems((prev) => prev.map((entry, idx) => (idx === i ? { ...entry, product } : entry)));
       }
 
       setPhase("done");
@@ -437,6 +448,7 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
     } catch (err) {
       console.error(err);
       setPhase("idle");
+      setIdentifiedCount(0);
       setProgress("Couldn't analyze — try another photo.");
     }
   }, [revokePreviewUrl]);
@@ -445,6 +457,7 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
     revokePreviewUrl();
     setImage(null);
     setItems([]);
+    setIdentifiedCount(0);
     setPhase("idle");
     setProgress("");
     setExpandedItem(null);
@@ -486,6 +499,10 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>): void => {
     handleFile(e.target.files?.[0]);
   };
+
+  const timelineStep = getTimelineStep(phase);
+  const isProcessing = phase === "analyzing" || phase === "searching";
+  const resolvedCount = items.filter((it) => Boolean(it.product)).length;
 
   /* ─── RENDER ─── */
   return (
@@ -537,8 +554,6 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
         @media(hover:hover){.item-row:hover{background:#151518!important}}
         .upgrade-card{position:relative;overflow:hidden}
         .upgrade-card::before{content:'';position:absolute;top:0;left:-100%;width:60%;height:100%;background:linear-gradient(90deg,transparent,rgba(209,163,139,.06),transparent);animation:shimmer 3s ease-in-out infinite}
-        .fitfind-email{display:none}
-        @media(min-width:380px){.fitfind-email{display:inline-block!important}}
         .ff-shell{
           position:relative;
           isolation:isolate;
@@ -579,6 +594,52 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
           background:rgba(255,255,255,.02);
         }
         .ff-soft-text{color:var(--ff-muted)}
+        .results-hero{
+          position:relative;
+          overflow:hidden;
+          border-radius:22px;
+          border:1px solid rgba(255,255,255,.09);
+          background:rgba(255,255,255,.02);
+        }
+        .results-overlay{
+          position:absolute;
+          inset:auto 0 0 0;
+          padding:16px 14px;
+          background:linear-gradient(180deg, rgba(10,10,12,0) 0%, rgba(10,10,12,.8) 100%);
+          display:flex;
+          gap:8px;
+          flex-wrap:wrap;
+        }
+        .timeline-shell{
+          display:grid;
+          grid-template-columns:repeat(3,minmax(0,1fr));
+          gap:8px;
+          margin:14px 0;
+        }
+        .timeline-step{
+          border:1px solid rgba(255,255,255,.08);
+          border-radius:12px;
+          padding:10px;
+          background:rgba(255,255,255,.02);
+        }
+        .timeline-step.active{
+          border-color:rgba(209,163,139,.42);
+          background:rgba(209,163,139,.09);
+        }
+        .timeline-step.done{
+          border-color:rgba(52,211,153,.3);
+          background:rgba(52,211,153,.1);
+        }
+        .result-item{
+          border:1px solid rgba(255,255,255,.1);
+          border-radius:16px;
+          background:linear-gradient(165deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+          padding:14px;
+          margin-bottom:10px;
+        }
+        .result-item.pending{
+          opacity:.78;
+        }
       `}</style>
 
       <div className="ff-shell">
@@ -597,21 +658,6 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
             {user && (
               <>
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 500,
-                    color: "#666",
-                    maxWidth: 100,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                  className="fitfind-email"
-                  title={user.email ?? user.id}
-                >
-                  {user.email ?? `${user.id.slice(0, 8)}…`}
-                </span>
                 <button
                   type="button"
                   onClick={handleSignOut}
@@ -815,166 +861,156 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
         {/* ─── RESULTS STATE ─── */}
         {user && image && (
           <div className="card-enter">
-            {/* Photo */}
             <div className="ff-panel" style={{ padding: 10, marginBottom: 12 }}>
-            <div style={{ position: "relative", borderRadius: 18, overflow: "hidden", marginBottom: 8 }}>
-              <img src={image} alt="Uploaded outfit" style={{ width: "100%", display: "block", borderRadius: 18 }} />
-              {(phase === "analyzing" || phase === "searching") && (
-                <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-                  <div className="scan-line" style={{ position: "absolute", left: 0, right: 0, height: 1.5, background: "linear-gradient(90deg, transparent 0%, #d1a38b 30%, #d1a38b 70%, transparent 100%)", boxShadow: "0 0 16px 3px rgba(209,163,139,.25)" }} />
-                  <div style={{ position: "absolute", inset: 0, background: "rgba(8,8,10,.2)" }} />
+              <div className="results-hero">
+                <img src={image} alt="Uploaded outfit" style={{ width: "100%", display: "block" }} />
+                {isProcessing && (
+                  <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+                    <div className="scan-line" style={{ position: "absolute", left: 0, right: 0, height: 1.5, background: "linear-gradient(90deg, transparent 0%, #d1a38b 30%, #d1a38b 70%, transparent 100%)", boxShadow: "0 0 16px 3px rgba(209,163,139,.25)" }} />
+                    <div style={{ position: "absolute", inset: 0, background: "rgba(8,8,10,.2)" }} />
+                  </div>
+                )}
+                <div className="results-overlay">
+                  <span className="ff-tag">{identifiedCount || items.length} pieces detected</span>
+                  {phase === "done" && (
+                    <span className="ff-tag">Estimated total {total.toLocaleString("en-US", { style: "currency", currency: "USD" })}</span>
+                  )}
+                  {isProcessing && <span className="ff-tag">AI in progress</span>}
                 </div>
-              )}
-              {items.length > 0 && (
-                <div style={{ position: "absolute", bottom: 12, left: 12, background: "rgba(8,8,10,.8)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderRadius: 10, padding: "8px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 20, fontWeight: 700, color: "#d1a38b" }}>{items.length}</span>
-                  <span style={{ fontSize: 11, color: "#999", lineHeight: 1.2 }}>pieces<br />found</span>
-                </div>
-              )}
-            </div>
+              </div>
             </div>
 
-            {/* Progress */}
-            {progress && (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 20, padding: "12px 0" }}>
-                <div className="dot-loading" style={{ display: "flex", gap: 4 }}><span /><span /><span /></div>
-                <span style={{ fontSize: 13, color: "#888" }}>{progress}</span>
+            {(isProcessing || phase === "done") && (
+              <div className="timeline-shell">
+                {TIMELINE_STEPS.map((step, idx) => {
+                  const done = timelineStep > idx;
+                  const active = timelineStep === idx;
+                  return (
+                    <div key={step} className={`timeline-step ${done ? "done" : ""} ${active ? "active" : ""}`}>
+                      <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".06em", color: done ? "#6ee7b7" : active ? "#e7bfab" : "#867b72", marginBottom: 6 }}>
+                        {done ? "Done" : active ? "Active" : "Waiting"}
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 500, color: "#efe7de" }}>{step}</div>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
-            {/* Results */}
+            {progress && (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                <div className="dot-loading" style={{ display: "flex", gap: 4 }}><span /><span /><span /></div>
+                <span className="ff-text-muted" style={{ fontSize: 13 }}>{progress}</span>
+              </div>
+            )}
+
             {items.length > 0 && (
               <div>
-                {/* Total bar */}
                 {phase === "done" && (
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "linear-gradient(135deg, rgba(209,163,139,.10), rgba(209,163,139,.04))", border: "1px solid rgba(209,163,139,.18)", borderRadius: 14, marginBottom: 14 }}>
                     <span style={{ fontSize: 12, color: "#b9afa5" }}>Estimated total</span>
-                                        <span style={{ fontSize: 18, fontWeight: 600, color: "#d1a38b" }}>
-                                          {total.toLocaleString("en-US", { style: "currency", currency: "USD" })}
-                                        </span>
-                                      </div>
-                                    )}
-                    
-                                    {/* Item list */}
-                                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                      {items.map((it, idx) => (
-                                        <div
-                                          key={idx}
-                                          className="item-row"
-                                          onClick={() => setExpandedItem(expandedItem === idx ? null : idx)}
-                                          style={{
-                                            padding: "14px 16px",
-                                            background: expandedItem === idx ? "rgba(255,255,255,.075)" : "rgba(255,255,255,.03)",
-                                            border: "1px solid rgba(255,255,255,.09)",
-                                            borderRadius: 14,
-                                            cursor: "pointer",
-                                            backdropFilter: "blur(8px)",
-                                            WebkitBackdropFilter: "blur(8px)",
-                                          }}
-                                        >
-                                          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                                            <div style={{ width: 44, height: 44, borderRadius: 8, background: "rgba(209,163,139,.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#d1a38b" }}>
-                                              <CatIcon cat={it.category} />
-                                            </div>
-                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                              <div style={{ fontSize: 13, fontWeight: 500, color: "#e2dbd2", marginBottom: 3 }}>{it.category}</div>
-                                              <div style={{ fontSize: 11, color: "#9e958c", lineHeight: 1.35 }}>{it.description}</div>
-                                              {it.product && (
-                                                <div style={{ fontSize: 10, color: "#d1a38b", marginTop: 4, fontWeight: 500 }}>
-                                                  {it.product.brand} · {it.product.retailer}
-                                                </div>
-                                              )}
-                                            </div>
-                                            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
-                                              {it.product?.price && (
-                                                <div style={{ fontSize: 12, fontWeight: 600, color: "#d1a38b" }}>
-                                                  {it.product.price}
-                                                </div>
-                                              )}
-                                              {it.product?.match_confidence && (
-                                                <div
-                                                  style={{
-                                                    fontSize: 9,
-                                                    fontWeight: 600,
-                                                    color: "#08080a",
-                                                    background: CONF[it.product.match_confidence],
-                                                    padding: "3px 8px",
-                                                    borderRadius: 6,
-                                                  }}
-                                                >
-                                                  {CONF_LABEL[it.product.match_confidence]}
-                                                </div>
-                                              )}
-                                            </div>
-                                          </div>
-                    
-                                          {expandedItem === idx && it.product && (
-                                            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.04)" }}>
-                                              {it.product.thumbnail && (
-                                                <img
-                                                  src={it.product.thumbnail}
-                                                  alt={it.product.product_name}
-                                                  style={{ width: "100%", borderRadius: 8, marginBottom: 10, maxHeight: 180, objectFit: "cover" }}
-                                                />
-                                              )}
-                                              <div style={{ fontSize: 12, color: "#bbb", marginBottom: 10 }}>
-                                                {it.product.product_name}
-                                              </div>
-                                              {it.product.match_confidence !== "low" && (
-                                                <button
-                                                  className="shop-btn"
-                                                  onClick={() => {
-                                                    handleShopClick(it);
-                                                    window.open(buildAffiliateUrl(it.product!.url, it.product!.retailer), "_blank");
-                                                  }}
-                                                  style={{
-                                                    width: "100%",
-                                                    background: "linear-gradient(135deg, #d1a38b, #b8806a)",
-                                                    color: "#08080a",
-                                                    border: "none",
-                                                    padding: "11px 16px",
-                                                    borderRadius: 10,
-                                                    fontSize: 13,
-                                                    fontWeight: 600,
-                                                    fontFamily: "inherit",
-                                                    cursor: "pointer",
-                                                  }}
-                                                >
-                                                  Shop on {it.product.retailer}
-                                                </button>
-                                              )}
-                                              <button
-                                                className="shop-btn"
-                                                onClick={() => {
-                                                  const q = encodeURIComponent(it.product!.product_name || it.search_query);
-                                                  window.open(`https://www.google.com/search?q=${q}&tbm=shop`, "_blank");
-                                                }}
-                                                style={{
-                                                  width: "100%",
-                                                  background: it.product.match_confidence === "low" ? "rgba(255,255,255,.04)" : "transparent",
-                                                  color: it.product.match_confidence === "low" ? "#ccc" : "#888",
-                                                  border: "1px solid rgba(255,255,255,.08)",
-                                                  padding: "10px 16px",
-                                                  borderRadius: 10,
-                                                  fontSize: 12,
-                                                  fontWeight: it.product.match_confidence === "low" ? 600 : 500,
-                                                  fontFamily: "inherit",
-                                                  cursor: "pointer",
-                                                  marginTop: it.product.match_confidence === "low" ? 0 : 8,
-                                                }}
-                                              >
-                                                {it.product.match_confidence === "low" ? "Browse similar items" : "Find similar on Google"}
-                                              </button>
-                                            </div>
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
+                    <span style={{ fontSize: 18, fontWeight: 600, color: "#d1a38b" }}>
+                      {total.toLocaleString("en-US", { style: "currency", currency: "USD" })}
+                    </span>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: 24, fontWeight: 400 }}>Found Pieces</h2>
+                  {isProcessing && (
+                    <span style={{ fontSize: 11, color: "#9f958c" }}>
+                      {resolvedCount}/{identifiedCount || items.length} matched
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {items.map((it, idx) => {
+                    const resolved = Boolean(it.product);
+                    return (
+                      <div
+                        key={`${it.category}-${idx}`}
+                        className={`result-item ${resolved ? "" : "pending"} item-row`}
+                        onClick={() => {
+                          if (!resolved) return;
+                          setExpandedItem(expandedItem === idx ? null : idx);
+                        }}
+                        style={{ cursor: resolved ? "pointer" : "default" }}
+                      >
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                          <div style={{ width: 44, height: 44, borderRadius: 8, background: "rgba(209,163,139,.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#d1a38b" }}>
+                            <CatIcon cat={it.category} />
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 500, color: "#e2dbd2", marginBottom: 3 }}>{it.category}</div>
+                            <div style={{ fontSize: 11, color: "#9e958c", lineHeight: 1.35 }}>{it.description}</div>
+                            {resolved ? (
+                              <div style={{ fontSize: 10, color: "#d1a38b", marginTop: 4, fontWeight: 500 }}>
+                                {it.product?.brand} · {it.product?.retailer}
+                              </div>
+                            ) : (
+                              <div style={{ marginTop: 8, height: 8, width: "64%", borderRadius: 99, background: "rgba(255,255,255,.08)" }} />
+                            )}
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
+                            {resolved ? (
+                              <>
+                                {it.product?.price && <div style={{ fontSize: 12, fontWeight: 600, color: "#d1a38b" }}>{it.product.price}</div>}
+                                {it.product?.match_confidence && (
+                                  <div style={{ fontSize: 9, fontWeight: 600, color: "#08080a", background: CONF[it.product.match_confidence], padding: "3px 8px", borderRadius: 6 }}>
+                                    {CONF_LABEL[it.product.match_confidence]}
                                   </div>
                                 )}
-                              </div>
+                              </>
+                            ) : (
+                              <span className="ff-tag">Matching...</span>
                             )}
                           </div>
                         </div>
-                      );
-                    }
+
+                        {resolved && expandedItem === idx && it.product && (
+                          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.04)" }}>
+                            {it.product.thumbnail && (
+                              <img
+                                src={it.product.thumbnail}
+                                alt={it.product.product_name}
+                                style={{ width: "100%", borderRadius: 8, marginBottom: 10, maxHeight: 180, objectFit: "cover" }}
+                              />
+                            )}
+                            <div style={{ fontSize: 12, color: "#d3cbc2", marginBottom: 10 }}>{it.product.product_name}</div>
+                            {it.product.match_confidence !== "low" && (
+                              <button
+                                className="shop-btn"
+                                onClick={() => {
+                                  handleShopClick(it);
+                                  window.open(buildAffiliateUrl(it.product!.url, it.product!.retailer), "_blank");
+                                }}
+                                style={{ width: "100%", background: "linear-gradient(135deg, #d1a38b, #b8806a)", color: "#08080a", border: "none", padding: "11px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, fontFamily: "inherit", cursor: "pointer" }}
+                              >
+                                Shop on {it.product.retailer}
+                              </button>
+                            )}
+                            <button
+                              className="shop-btn"
+                              onClick={() => {
+                                const q = encodeURIComponent(it.product!.product_name || it.search_query);
+                                window.open(`https://www.google.com/search?q=${q}&tbm=shop`, "_blank");
+                              }}
+                              style={{ width: "100%", background: it.product.match_confidence === "low" ? "rgba(255,255,255,.04)" : "transparent", color: it.product.match_confidence === "low" ? "#ccc" : "#9f958c", border: "1px solid rgba(255,255,255,.08)", padding: "10px 16px", borderRadius: 10, fontSize: 12, fontWeight: it.product.match_confidence === "low" ? 600 : 500, fontFamily: "inherit", cursor: "pointer", marginTop: it.product.match_confidence === "low" ? 0 : 8 }}
+                            >
+                              {it.product.match_confidence === "low" ? "Browse similar items" : "Find similar on Google"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

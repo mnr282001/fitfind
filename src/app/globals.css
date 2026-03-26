@@ -3,6 +3,10 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --ff-accent: #d1a38b;
+  --ff-accent-strong: #b8806a;
+  --ff-muted: #9e958c;
+  --ff-panel-border: rgba(255, 255, 255, 0.1);
 }
 
 @theme inline {
@@ -17,6 +21,10 @@
     --background: #0a0a0a;
     --foreground: #ededed;
   }
+}
+
+.ff-text-muted {
+  color: var(--ff-muted);
 }
 
 body {
