@@ -20,6 +20,16 @@ const BASE64_RE = /^[A-Za-z0-9+/=]+$/;
 
 type AnalyzeBody = { image: string; mediaType: string };
 
+const CATEGORY_CANONICAL_MAP: Array<{ canonical: string; aliases: string[] }> = [
+  { canonical: "Top", aliases: ["top", "shirt", "t-shirt", "tee", "blouse", "tank", "camisole", "polo", "crop top"] },
+  { canonical: "Outerwear", aliases: ["outerwear", "jacket", "coat", "blazer", "cardigan", "hoodie", "sweater"] },
+  { canonical: "Dress", aliases: ["dress", "gown", "slip dress", "maxi dress", "mini dress"] },
+  { canonical: "Bottom", aliases: ["bottom", "pants", "trouser", "jeans", "shorts", "skirt", "leggings"] },
+  { canonical: "Shoes", aliases: ["shoes", "sneakers", "boots", "heels", "sandals", "loafers"] },
+  { canonical: "Bag", aliases: ["bag", "purse", "handbag", "tote", "backpack", "clutch"] },
+  { canonical: "Accessory", aliases: ["accessory", "hat", "cap", "belt", "scarf", "sunglasses", "glasses", "jewelry", "watch"] },
+];
+
 function normalizeSimpleString(value: unknown, maxLen: number): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
@@ -70,6 +80,14 @@ function sanitizeModelItems(raw: unknown): Record<string, string>[] {
       price_estimate: typeof entry.price_estimate === "string" ? entry.price_estimate.trim().slice(0, 80) : "",
     }))
     .filter((item) => item.category.length > 0 && item.search_query.length > 0);
+}
+
+function normalizeCategory(category: string): string {
+  const lowered = category.toLowerCase();
+  for (const { canonical, aliases } of CATEGORY_CANONICAL_MAP) {
+    if (aliases.some((alias) => lowered.includes(alias))) return canonical;
+  }
+  return category;
 }
 
 function extForMediaType(mt: string): string {
@@ -161,12 +179,19 @@ export async function POST(req: Request) {
             parts: [
               { inlineData: { mimeType: mediaType, data: image } },
               {
-                text: `You are an expert fashion stylist. For each visible clothing item, accessory, and footwear, return a JSON array with objects containing:
-- "category": garment type
+                text: `You are an expert fashion stylist and e-commerce classifier.
+For each clearly visible clothing item, accessory, and footwear, return a JSON array with objects containing:
+- "category": ONE canonical value from [Top, Outerwear, Dress, Bottom, Shoes, Bag, Accessory]
 - "description": specific details (color, fabric, silhouette, fit, logos)
 - "brand_guess": brand if visible, otherwise "Unknown"
-- "search_query": shopping search query to find this item
+- "search_query": concise shopping query containing category + key visual descriptors + brand if known
 - "price_estimate": USD price range
+
+Rules:
+- Include only real worn/carry items (not body parts, background objects, or generic scene terms).
+- Do not duplicate the same piece twice.
+- Use specific categories (e.g., "Bottom" for jeans, "Shoes" for sneakers).
+- Ensure each search_query is specific enough to retrieve the same type of item.
 
 Respond ONLY with valid JSON array. No markdown.`,
               },
@@ -207,7 +232,10 @@ Respond ONLY with valid JSON array. No markdown.`,
 
   try {
     const parsed = JSON.parse(cleaned) as unknown;
-    const items = sanitizeModelItems(parsed);
+    const items = sanitizeModelItems(parsed).map((item) => ({
+      ...item,
+      category: normalizeCategory(item.category),
+    }));
     if (svc) {
       await svc.from("analysis_runs").insert({
         id: runId,

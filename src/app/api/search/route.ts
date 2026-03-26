@@ -108,6 +108,74 @@ function getPartnerTier(source: string): number {
   return 0;
 }
 
+function normalizeCategory(category: string | null): string | null {
+  if (!category) return null;
+  const c = category.toLowerCase();
+  if (/(top|shirt|blouse|tee|tank)/.test(c)) return "top";
+  if (/(outerwear|jacket|coat|blazer|hoodie|sweater)/.test(c)) return "outerwear";
+  if (/(dress|gown)/.test(c)) return "dress";
+  if (/(bottom|pant|trouser|jean|short|skirt|legging)/.test(c)) return "bottom";
+  if (/(shoe|sneaker|boot|sandal|heel|loafer)/.test(c)) return "shoes";
+  if (/(bag|purse|tote|clutch|backpack|handbag)/.test(c)) return "bag";
+  if (/(accessory|hat|cap|belt|scarf|glass|sunglass|jewel|watch)/.test(c)) return "accessory";
+  return c;
+}
+
+function tokenize(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length > 1);
+}
+
+function isAggregatorHost(host: string): boolean {
+  return /(google\.com|shopping\.yahoo\.com|bing\.com)/.test(host);
+}
+
+function relevanceScore(m: SerpMatch, searchQuery: string, brandGuess: string, category: string | null): number {
+  const title = (m.title || "").toLowerCase();
+  const source = (m.source || "").toLowerCase();
+  const queryTokens = tokenize(searchQuery);
+  const brandTokens = tokenize(brandGuess).filter((t) => t !== "unknown");
+  const normalizedCategory = normalizeCategory(category);
+
+  let score = 0;
+
+  // Reward lexical overlap with query title.
+  const overlap = queryTokens.reduce((acc, token) => (title.includes(token) ? acc + 1 : acc), 0);
+  score += Math.min(8, overlap);
+
+  // Strongly reward matching brand signal when provided.
+  if (brandTokens.length > 0) {
+    const brandHit = brandTokens.some((token) => title.includes(token) || source.includes(token));
+    if (brandHit) score += 5;
+  }
+
+  // Category-aware boost/penalty to avoid cross-category links.
+  if (normalizedCategory) {
+    if (title.includes(normalizedCategory)) {
+      score += 4;
+    } else if (["top", "outerwear", "dress", "bottom", "shoes", "bag", "accessory"].some((cat) => cat !== normalizedCategory && title.includes(cat))) {
+      score -= 2;
+    }
+  }
+
+  if (m.product_link) {
+    try {
+      const host = new URL(m.product_link).hostname.toLowerCase();
+      if (BLOCKED.some((b) => host.includes(b))) return -1;
+      if (isAggregatorHost(host)) score -= 2;
+    } catch {
+      return -1;
+    }
+  } else {
+    return -1;
+  }
+
+  return score;
+}
+
 function scoreMatch(m: SerpMatch): number {
   if (!m.product_link) return -1;
   try {
@@ -183,7 +251,7 @@ export async function POST(req: Request) {
   const matches = parseSerpMatches((data as { shopping_results?: unknown }).shopping_results);
 
   const scored = matches
-    .map((m) => ({ m, score: scoreMatch(m) }))
+    .map((m) => ({ m, score: scoreMatch(m) + relevanceScore(m, searchQuery, brandGuess, category) }))
     .filter(({ score }) => score >= 0)
     .sort((a, b) => b.score - a.score);
 
@@ -200,7 +268,7 @@ export async function POST(req: Request) {
       url: buildAffiliateUrl(top.product_link!),
       retailer: top.source || "Unknown",
       thumbnail: top.thumbnail || null,
-      match_confidence: top.price ? "high" : "medium",
+      match_confidence: best.score >= 12 ? "high" : "medium",
     };
   } else {
     const fallbackUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}&tbm=shop`;

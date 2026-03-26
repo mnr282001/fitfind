@@ -554,6 +554,8 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
         @media(hover:hover){.item-row:hover{background:#151518!important}}
         .upgrade-card{position:relative;overflow:hidden}
         .upgrade-card::before{content:'';position:absolute;top:0;left:-100%;width:60%;height:100%;background:linear-gradient(90deg,transparent,rgba(209,163,139,.06),transparent);animation:shimmer 3s ease-in-out infinite}
+        .fitfind-email{display:none}
+        @media(min-width:380px){.fitfind-email{display:inline-block!important}}
         .ff-shell{
           position:relative;
           isolation:isolate;
@@ -621,10 +623,13 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
           border-radius:12px;
           padding:10px;
           background:rgba(255,255,255,.02);
+          transform:translateY(0);
+          transition:transform .24s ease, border-color .24s ease, background .24s ease, opacity .24s ease;
         }
         .timeline-step.active{
           border-color:rgba(209,163,139,.42);
           background:rgba(209,163,139,.09);
+          transform:translateY(-2px);
         }
         .timeline-step.done{
           border-color:rgba(52,211,153,.3);
@@ -636,9 +641,27 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
           background:linear-gradient(165deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
           padding:14px;
           margin-bottom:10px;
+          animation:fadeUp .35s cubic-bezier(.22,1,.36,1) both;
+          transition:border-color .22s ease, background .22s ease, transform .22s ease;
         }
         .result-item.pending{
           opacity:.78;
+        }
+        .result-item.resolved{
+          border-color:rgba(209,163,139,.22);
+          background:linear-gradient(165deg, rgba(255,255,255,.06), rgba(255,255,255,.025));
+        }
+        .skeleton-line{
+          position:relative;
+          overflow:hidden;
+        }
+        .skeleton-line::after{
+          content:'';
+          position:absolute;
+          inset:0;
+          background:linear-gradient(90deg, transparent, rgba(255,255,255,.15), transparent);
+          transform:translateX(-100%);
+          animation:shimmer 1.9s ease-in-out infinite;
         }
       `}</style>
 
@@ -658,6 +681,21 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
             {user && (
               <>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 500,
+                    color: "#666",
+                    maxWidth: 100,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  className="fitfind-email"
+                  title={user.email ?? user.id}
+                >
+                  {user.email ?? `${user.id.slice(0, 8)}…`}
+                </span>
                 <button
                   type="button"
                   onClick={handleSignOut}
@@ -930,7 +968,7 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
                     return (
                       <div
                         key={`${it.category}-${idx}`}
-                        className={`result-item ${resolved ? "" : "pending"} item-row`}
+                        className={`result-item ${resolved ? "resolved" : "pending"} item-row`}
                         onClick={() => {
                           if (!resolved) return;
                           setExpandedItem(expandedItem === idx ? null : idx);
@@ -949,7 +987,7 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
                                 {it.product?.brand} · {it.product?.retailer}
                               </div>
                             ) : (
-                              <div style={{ marginTop: 8, height: 8, width: "64%", borderRadius: 99, background: "rgba(255,255,255,.08)" }} />
+                              <div className="skeleton-line" style={{ marginTop: 8, height: 8, width: "64%", borderRadius: 99, background: "rgba(255,255,255,.08)" }} />
                             )}
                           </div>
                           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
