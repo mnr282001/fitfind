@@ -361,6 +361,7 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
   const [showUpgrade, setShowUpgrade] = useState<boolean>(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const previewBlobUrlRef = useRef<string | null>(null);
+  const resultsAnchorRef = useRef<HTMLDivElement | null>(null);
 
   const revokePreviewUrl = useCallback(() => {
     if (previewBlobUrlRef.current) {
@@ -374,6 +375,18 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
   }, []);
 
   useEffect(() => () => revokePreviewUrl(), [revokePreviewUrl]);
+
+  const scrollToResults = useCallback(() => {
+    if (!resultsAnchorRef.current) return;
+    resultsAnchorRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, []);
+
+  useEffect(() => {
+    if (!image) return;
+    if (phase !== "analyzing" && phase !== "searching") return;
+    const id = window.setTimeout(() => scrollToResults(), 120);
+    return () => window.clearTimeout(id);
+  }, [image, phase, items.length, scrollToResults]);
 
   const handleSignOut = useCallback(async () => {
     try {
@@ -1044,6 +1057,7 @@ export default function FitFind({ user }: { user: FitFindUser | null }): JSX.Ele
                     );
                   })}
                 </div>
+                <div ref={resultsAnchorRef} style={{ height: 1 }} />
               </div>
             )}
           </div>
