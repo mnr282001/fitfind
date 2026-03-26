@@ -302,6 +302,8 @@ export async function POST(req: Request) {
   let serpStatus: "ok" | "error" = "ok";
   let rawError: string | null = null;
   const mergedMatches: SerpMatch[] = [];
+  let successCount = 0;
+  let failureCount = 0;
 
   const queryResults = await Promise.allSettled(
     queries.map(async (q) => {
@@ -328,7 +330,7 @@ export async function POST(req: Request) {
 
   for (const result of queryResults) {
     if (result.status === "rejected") {
-      serpStatus = "error";
+      failureCount += 1;
       rawError = result.reason instanceof Error ? result.reason.message : String(result.reason);
       console.error("[FitFind search] fetch failed:", result.reason);
       continue;
@@ -336,10 +338,28 @@ export async function POST(req: Request) {
 
     const { ok, data } = result.value;
     if (!ok) {
-      serpStatus = "error";
+      failureCount += 1;
       rawError = JSON.stringify(data).slice(0, 4000);
+      continue;
     }
+    successCount += 1;
     mergedMatches.push(...parseSerpMatches((data as { shopping_results?: unknown }).shopping_results));
+  }
+
+  const allQueriesFailed = failureCount > 0 && successCount === 0;
+  const partialQueryFailure = failureCount > 0 && successCount > 0;
+  if (allQueriesFailed) {
+    serpStatus = "error";
+  } else if (partialQueryFailure) {
+    console.warn(
+      JSON.stringify({
+        event: "search_partial_upstream_failure",
+        userId: user.id,
+        queryCount: queries.length,
+        successCount,
+        failureCount,
+      })
+    );
   }
 
   const matchesByUrl = new Map<string, SerpMatch>();
@@ -384,7 +404,7 @@ export async function POST(req: Request) {
   }
 
   const svc = createServiceClient();
-  if (serpStatus === "error" && rawError) {
+  if (allQueriesFailed && rawError) {
     await logApiError(svc, {
       userId: user.id,
       endpoint: "/api/search",
@@ -393,9 +413,9 @@ export async function POST(req: Request) {
       analysisRunId: analysisRunIdIn,
       httpStatus: 502,
       errorCode: "upstream_error",
-      message: "One or more SerpAPI requests failed",
+      message: "All SerpAPI requests failed",
       details: rawError,
-      metadata: { queryCount: queries.length, queries },
+      metadata: { queryCount: queries.length, queries, successCount, failureCount },
     });
   }
   if (svc) {
