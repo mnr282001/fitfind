@@ -59,21 +59,6 @@ export function FitFindNav({ user, isAdmin, remaining, limit, showReset, onReset
                 Admin
               </Link>
             )}
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 500,
-                color: "#666",
-                maxWidth: 100,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-              className="fitfind-email"
-              title={user.email ?? user.id}
-            >
-              {user.email ?? `${user.id.slice(0, 8)}...`}
-            </span>
             <button
               type="button"
               onClick={onSignOut}
