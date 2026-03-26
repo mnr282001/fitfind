@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { requireUser } from "@/lib/auth/require-user";
+import { logApiError, logTokenUsage } from "@/lib/monitoring";
 import { createServiceClient } from "@/lib/supabase/service";
 
 const MODEL = "gemini-2.5-flash";
@@ -168,18 +169,20 @@ export async function POST(req: Request) {
     })
   );
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { inlineData: { mimeType: mediaType, data: image } },
-              {
-                text: `You are an expert fashion stylist and e-commerce classifier.
+  let res: Response;
+  try {
+    res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { inlineData: { mimeType: mediaType, data: image } },
+                {
+                  text: `You are an expert fashion stylist and e-commerce classifier.
 For each clearly visible clothing item, accessory, and footwear, return a JSON array with objects containing:
 - "category": ONE canonical value from [Top, Outerwear, Dress, Bottom, Shoes, Bag, Accessory]
 - "description": specific details (color, fabric, silhouette, fit, logos)
@@ -194,18 +197,43 @@ Rules:
 - Ensure each search_query is specific enough to retrieve the same type of item.
 
 Respond ONLY with valid JSON array. No markdown.`,
-              },
-            ],
-          },
-        ],
-      }),
-    }
-  );
+                },
+              ],
+            },
+          ],
+        }),
+      }
+    );
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    await logApiError(svc, {
+      userId: user.id,
+      endpoint: "/api/analyze",
+      provider: "google-gemini",
+      model: MODEL,
+      analysisRunId: runId,
+      errorCode: "upstream_fetch_error",
+      message: "Gemini API request failed before receiving response",
+      details: detail,
+    });
+    return Response.json({ error: "Gemini API request failed", detail }, { status: 502 });
+  }
 
   const latencyMs = Date.now() - started;
 
   if (!res.ok) {
     const err = await res.text();
+    await logApiError(svc, {
+      userId: user.id,
+      endpoint: "/api/analyze",
+      provider: "google-gemini",
+      model: MODEL,
+      analysisRunId: runId,
+      httpStatus: res.status,
+      errorCode: "upstream_http_error",
+      message: "Gemini API returned a non-2xx response",
+      details: err,
+    });
     if (svc) {
       await svc.from("analysis_runs").insert({
         id: runId,
@@ -226,7 +254,15 @@ Respond ONLY with valid JSON array. No markdown.`,
     candidates?: Array<{
       content?: { parts?: Array<{ text?: string }> };
     }>;
+    usageMetadata?: {
+      promptTokenCount?: number;
+      candidatesTokenCount?: number;
+      totalTokenCount?: number;
+    };
   };
+  const promptTokens = data.usageMetadata?.promptTokenCount ?? 0;
+  const completionTokens = data.usageMetadata?.candidatesTokenCount ?? 0;
+  const totalTokens = data.usageMetadata?.totalTokenCount ?? promptTokens + completionTokens;
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "[]";
   const cleaned = text.replace(/```json\n?|```/g, "").trim();
 
@@ -249,12 +285,47 @@ Respond ONLY with valid JSON array. No markdown.`,
         raw_error: null,
       });
     }
+    await logTokenUsage(svc, {
+      userId: user.id,
+      endpoint: "/api/analyze",
+      provider: "google-gemini",
+      model: MODEL,
+      analysisRunId: runId,
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      status: "ok",
+      metadata: { mediaType, itemCount: items.length },
+    });
     return Response.json({
       items,
       analysisRunId: runId,
       imageStored: storagePath !== null,
     });
   } catch {
+    await logApiError(svc, {
+      userId: user.id,
+      endpoint: "/api/analyze",
+      provider: "google-gemini",
+      model: MODEL,
+      analysisRunId: runId,
+      httpStatus: 500,
+      errorCode: "parse_error",
+      message: "Failed to parse Gemini JSON response",
+      details: cleaned,
+    });
+    await logTokenUsage(svc, {
+      userId: user.id,
+      endpoint: "/api/analyze",
+      provider: "google-gemini",
+      model: MODEL,
+      analysisRunId: runId,
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      status: "error",
+      metadata: { mediaType, parseFailed: true },
+    });
     if (svc) {
       await svc.from("analysis_runs").insert({
         id: runId,

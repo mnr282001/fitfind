@@ -6,6 +6,11 @@ export default async function Home() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  let isAdmin = false;
+  if (user) {
+    const { data } = await supabase.from("admin_users").select("profile_id").eq("profile_id", user.id).maybeSingle();
+    isAdmin = Boolean(data);
+  }
 
   return (
     <FitFind
@@ -14,6 +19,7 @@ export default async function Home() {
           ? { id: user.id, email: user.email ?? null }
           : null
       }
+      isAdmin={isAdmin}
     />
   );
 }

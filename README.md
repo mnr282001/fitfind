@@ -16,6 +16,21 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Monitoring Token Spend And Errors
+
+- Apply latest migration: `supabase/migrations/20260326130000_monitoring.sql`
+- Apply admin migration: `supabase/migrations/20260326133000_admin_users.sql`
+- Token usage and cost estimates are logged to `token_usage_events`.
+- API failures are logged to `api_error_events`.
+- `GET /api/monitoring/summary` is admin-only.
+- Grant admin by inserting a profile id into `admin_users`.
+- Admin dashboard page: `/admin` (admin-only).
+
+Optional env vars for price estimation:
+
+- `GEMINI_INPUT_USD_PER_1M` (default: `0.3`)
+- `GEMINI_OUTPUT_USD_PER_1M` (default: `2.5`)
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
